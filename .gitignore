@@ -1,0 +1,77 @@
+# =============================================================================
+# SMEC Backend — .gitignore
+# =============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+ENV/
+
+# Environment variables — NEVER commit this
+.env
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Media files (uploaded by users — not in version control)
+media/
+
+# Static files (collected by collectstatic)
+staticfiles/
+
+# Google service account key — sensitive, never commit
+service_account.json
+*.json.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temp / scratch files — not part of the codebase
+temp_script.js
+test.js
+*.tmp
+scratch/
+
+# Dependencies installed locally (e.g. npm for frontend tooling)
+node_modules/
+
+# Celery beat schedule database
+celerybeat-schedule.db
+celerybeat-schedule
+
+# Docker
+docker-compose.override.yml
