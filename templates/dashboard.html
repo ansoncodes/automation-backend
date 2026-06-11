@@ -200,51 +200,219 @@
 <!-- ================================================================
      LOGIN SCREEN
      ================================================================ -->
-<div id="login-screen" class="min-h-screen flex items-center justify-center px-4"
-  style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);">
-  <div class="w-full max-w-sm">
-    <!-- Brand -->
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 shadow-xl"
-           style="background: linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
-               0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0
-               0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+<div id="login-screen" class="login-layout-wrapper">
+  <style>
+    .login-layout-wrapper {
+      --primary-blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --navy: #0f1c3f;
+      --indigo-accent: #1a3a6e;
+      --white: #ffffff;
+      --off-white: #f9fafb;
+      --border: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-muted: #64748b;
+      --success-green: #16a34a;
+      --focus-ring: rgba(37, 99, 235, 0.15);
+      --pill-bg: #eff6ff;
+
+      display: flex;
+      width: 100%;
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+      background-color: var(--white);
+    }
+    .login-left-panel {
+      width: 60%;
+      background: linear-gradient(135deg, var(--navy) 0%, var(--indigo-accent) 100%);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding: 48px 64px;
+      color: var(--white);
+      overflow: hidden;
+    }
+    .login-left-panel::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      opacity: 0.5; pointer-events: none;
+    }
+    .login-right-panel {
+      width: 40%; background-color: var(--white); display: flex; flex-direction: column; position: relative;
+    }
+    .login-brand-logo { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; position: relative; z-index: 1; }
+    .login-brand-icon { width: 32px; height: 32px; background-color: var(--primary-blue); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .login-brand-icon svg { width: 20px; height: 20px; fill: var(--white); }
+    .login-value-prop { position: relative; z-index: 1; max-width: 480px; margin: auto 0; }
+    .login-value-prop h1 { font-size: 48px; font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 32px; }
+    .login-feature-list { list-style: none; display: flex; flex-direction: column; gap: 16px; padding: 0; margin: 0; }
+    .login-feature-item { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 400; color: rgba(255, 255, 255, 0.9); opacity: 0; transform: translateX(-16px); animation: staggerFadeIn 0.5s ease-out forwards; }
+    .login-feature-item:nth-child(1) { animation-delay: 0.1s; }
+    .login-feature-item:nth-child(2) { animation-delay: 0.2s; }
+    .login-feature-item:nth-child(3) { animation-delay: 0.3s; }
+    .login-feature-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background-color: rgba(255, 255, 255, 0.1); color: var(--primary-blue); }
+    .login-trust-row { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 16px; }
+    .login-trust-text { font-size: 14px; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+    .login-trust-icons { display: flex; gap: 24px; opacity: 0.7; }
+    .login-trust-icons svg { height: 24px; fill: currentColor; }
+    .login-support-link { position: absolute; top: 32px; right: 48px; font-size: 14px; color: var(--text-muted); text-decoration: none; font-weight: 500; transition: color 0.2s; }
+    .login-support-link:hover { color: var(--text-primary); }
+    .login-form-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px; }
+    .login-form-card { width: 100%; max-width: 400px; opacity: 0; transform: translateY(16px); animation: formFadeIn 0.4s ease-out forwards; }
+    .login-pill { display: inline-block; background-color: var(--pill-bg); color: var(--blue-dark); font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 100px; margin-bottom: 24px; }
+    .login-header { margin-bottom: 32px; }
+    .login-header h2 { font-size: 28px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; letter-spacing: -0.01em; }
+    .login-header p { font-size: 14px; color: var(--text-muted); margin: 0; }
+    .login-input-group { margin-bottom: 20px; position: relative; }
+    .login-label { display: block; font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 8px; }
+    .login-input-wrap { position: relative; }
+    .login-input { width: 100%; height: 48px; padding: 0 16px; font-family: 'Inter', sans-serif; font-size: 16px; color: var(--text-primary); background-color: var(--white); border: 1.5px solid var(--border); border-radius: 8px; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; box-sizing: border-box; }
+    .login-input::placeholder { color: #94a3b8; }
+    .login-input:focus { border-color: var(--primary-blue) !important; box-shadow: 0 0 0 3px var(--focus-ring) !important; }
+    .login-input.has-prefix { padding-left: 44px; }
+    .login-prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; display: flex; pointer-events: none; transition: color 0.2s ease; }
+    .login-input:focus ~ .login-prefix { color: var(--primary-blue); }
+    .login-pwd-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+    .login-pwd-toggle:hover { color: var(--text-primary); }
+    .login-pwd-toggle:focus-visible { outline: 2px solid var(--primary-blue); outline-offset: 2px; }
+    .login-forgot { display: block; text-align: right; font-size: 13px; font-weight: 500; color: var(--primary-blue); text-decoration: none; margin-bottom: 24px; }
+    .login-forgot:hover { text-decoration: underline; }
+    
+    .login-btn-submit { width: 100%; height: 48px; background-color: var(--primary-blue); color: var(--white); font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.02em; border: none; border-radius: 8px; cursor: pointer; position: relative; overflow: hidden; transition: background-color 0.2s ease, transform 0.1s ease; display: flex; align-items: center; justify-content: center; }
+    .login-btn-submit:not(:disabled):hover { background-color: var(--blue-dark); }
+    .login-btn-submit:not(:disabled):active { transform: scale(0.99); }
+    .login-btn-submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+    .login-btn-submit:disabled { cursor: not-allowed; opacity: 0.9; }
+    
+    .login-btn-text { transition: opacity 0.2s; }
+    .login-btn-submit.loading .login-btn-text { opacity: 0; }
+    .login-btn-submit.success { background-color: var(--success-green); }
+    .login-spinner-anim { position: absolute; width: 20px; height: 20px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: var(--white); animation: login-spin 0.8s linear infinite; opacity: 0; visibility: hidden; }
+    .login-btn-submit.loading .login-spinner-anim { opacity: 1; visibility: visible; }
+    .login-success-content { position: absolute; display: flex; align-items: center; gap: 8px; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.3s ease; }
+    .login-btn-submit.success .login-success-content { opacity: 1; visibility: visible; transform: translateY(0); }
+    .login-btn-submit.success .login-btn-text, .login-btn-submit.success .login-spinner-anim { display: none; }
+    
+    .login-divider { display: flex; align-items: center; text-align: center; margin: 32px 0; color: var(--text-muted); font-size: 13px; }
+    .login-divider::before, .login-divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
+    .login-divider:not(:empty)::before { margin-right: .5em; }
+    .login-divider:not(:empty)::after { margin-left: .5em; }
+    .login-btn-ghost { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 48px; background-color: transparent; color: var(--text-primary); font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 500; border: 1.5px solid var(--border); border-radius: 8px; text-decoration: none; transition: all 0.2s ease; box-sizing: border-box; }
+    .login-btn-ghost:hover { background-color: var(--off-white); border-color: #cbd5e1; }
+    .login-btn-ghost:focus-visible { outline: none; border-color: var(--primary-blue); box-shadow: 0 0 0 3px var(--focus-ring); }
+    @keyframes formFadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes staggerFadeIn { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes login-spin { to { transform: rotate(360deg); } }
+    @media (max-width: 768px) { .login-left-panel { display: none; } .login-right-panel { width: 100%; } .login-form-wrapper { padding: 24px; } .login-support-link { top: 24px; right: 24px; } }
+    @media (prefers-reduced-motion: reduce) { .login-form-card, .login-feature-item, .login-btn-submit { animation: none !important; transition: none !important; } }
+  </style>
+
+  <!-- Left Panel -->
+  <div class="login-left-panel">
+    <div class="login-brand-logo">
+      <div class="login-brand-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         </svg>
       </div>
-      <h1 class="text-2xl font-bold text-white tracking-tight">SMEC Automation</h1>
-      <p class="text-slate-400 text-sm mt-1">Sales Dashboard</p>
+      SMEC Automation
     </div>
-    <!-- Card -->
-    <div class="card p-8 shadow-2xl">
-      <h2 class="text-lg font-semibold text-slate-800 mb-6">Sign in to your account</h2>
-      <form id="login-form" onsubmit="handleLogin(event)" novalidate>
-        <div class="mb-4">
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Username</label>
-          <input id="login-username" type="text" required autocomplete="username"
-            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 transition-all"
-            placeholder="your_username" />
+    <div class="login-value-prop">
+      <h1>Manage leads.<br>Close deals.<br>Scale faster.</h1>
+      <ul class="login-feature-list">
+        <li class="login-feature-item">
+          <div class="login-feature-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          Real-time lead pipeline
+        </li>
+        <li class="login-feature-item">
+          <div class="login-feature-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          Multi-campaign tracking
+        </li>
+
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Right Panel -->
+  <div class="login-right-panel">
+    
+    <div class="login-form-wrapper">
+      <div class="login-form-card">
+        <div class="login-header">
+          <span class="login-pill">Leads Dashboard</span>
+          <h2>Welcome back</h2>
+          <p>Sign in to your SMEC account</p>
         </div>
-        <div class="mb-5">
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Password</label>
-          <input id="login-password" type="password" required autocomplete="current-password"
-            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 transition-all"
-            placeholder="••••••••" />
-        </div>
-        <div id="login-error" class="hidden mb-4 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"></div>
-        <button type="submit" id="login-btn"
-          class="btn-primary w-full py-2.5 px-4 rounded-lg text-sm font-semibold text-white transition-all">
-          Sign In
-        </button>
-      </form>
-      <p class="text-center text-xs text-slate-400 mt-5">
-        Need Django admin?
-        <a href="/admin/" target="_blank" class="text-blue-600 hover:underline">Open admin ↗</a>
-      </p>
+
+        <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+          <div class="login-input-group">
+            <label for="login-username" class="login-label">Username</label>
+            <input type="text" id="login-username" class="login-input" placeholder="your_username" required autocomplete="username">
+          </div>
+
+          <div class="login-input-group">
+            <label for="login-password" class="login-label">Password</label>
+            <div class="login-input-wrap">
+              <input type="password" id="login-password" class="login-input has-prefix" placeholder="••••••••" required autocomplete="current-password">
+              <div class="login-prefix">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </div>
+              <button type="button" class="login-pwd-toggle" id="togglePassword" aria-label="Show password">
+                <svg class="eye-icon" id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <svg class="eye-off-icon" id="eyeOffIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Important: keep this error div structured properly so handleLogin logic doesn't break -->
+          <div id="login-error" class="hidden mb-4 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"></div>
+
+          <a href="#" class="login-forgot">Forgot password?</a>
+
+          <button type="submit" id="login-btn" class="login-btn-submit" aria-label="Sign In">
+            <span class="login-btn-text">Sign In</span>
+            <div class="login-spinner-anim"></div>
+            <div class="login-success-content">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Signed in!
+            </div>
+          </button>
+        </form>
+
+
+      </div>
     </div>
   </div>
+
+  <script>
+    document.getElementById('togglePassword').addEventListener('click', () => {
+      const passwordInput = document.getElementById('login-password');
+      const toggleBtn = document.getElementById('togglePassword');
+      const eyeIcon = document.getElementById('eyeIcon');
+      const eyeOffIcon = document.getElementById('eyeOffIcon');
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      toggleBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+      eyeIcon.style.display = isPassword ? 'none' : 'block';
+      eyeOffIcon.style.display = isPassword ? 'block' : 'none';
+      passwordInput.focus();
+    });
+  </script>
 </div>
 
 
@@ -333,11 +501,7 @@
             </svg>
           </button>
         </div>
-        <a href="/admin/" target="_blank"
-          class="block text-center text-xs mt-2 transition-colors"
-          style="color:#475569;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
-          Django Admin ↗
-        </a>
+
       </div>
     </aside>
 
@@ -866,19 +1030,27 @@ async function handleLogin(e) {
   const btn      = document.getElementById('login-btn');
 
   errEl.classList.add('hidden');
-  btn.disabled = true; btn.textContent = 'Signing in…'; btn.style.opacity = '.7';
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  const minSpinnerTime = new Promise(resolve => setTimeout(resolve, 1500));
 
   try {
-    const res  = await fetch(API_BASE + '/api/auth/login/', {
+    const reqPromise = fetch(API_BASE + '/api/auth/login/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
+    
+    // Wait for BOTH the minimum 1.5s time AND the actual fetch to complete
+    const [res] = await Promise.all([reqPromise, minSpinnerTime]);
     const data = await res.json();
 
     if (!res.ok) {
       errEl.textContent = data.error || 'Invalid credentials';
       errEl.classList.remove('hidden');
+      btn.classList.remove('loading');
+      btn.disabled = false;
       return;
     }
 
@@ -889,18 +1061,29 @@ async function handleLogin(e) {
     document.getElementById('user-name-display').textContent = _username;
     document.getElementById('user-avatar').textContent = _username[0].toUpperCase();
 
-    // Switch screens
-    document.getElementById('login-screen').style.display = 'none';
-    const shell = document.getElementById('app-shell');
-    shell.style.display = 'block';
+    // Show success state
+    btn.classList.remove('loading');
+    btn.classList.add('success');
 
-    window.location.hash = '#dashboard';
-    handleHashChange();
+    // Wait 1s before redirect
+    setTimeout(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      const shell = document.getElementById('app-shell');
+      shell.style.display = 'block';
+
+      window.location.hash = '#dashboard';
+      handleHashChange();
+      
+      // Reset button state for future logouts
+      btn.classList.remove('success');
+      btn.disabled = false;
+    }, 1000);
+
   } catch (_err) {
     errEl.textContent = 'Connection error. Is the server running?';
     errEl.classList.remove('hidden');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Sign In'; btn.style.opacity = '1';
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
 }
 
