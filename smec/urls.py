@@ -18,8 +18,12 @@ from django.conf.urls.static import static
 from django.urls import path, include
 
 from core.auth_views import LoginView
+from core.dashboard_view import DashboardView
 
 urlpatterns = [
+    # Sales dashboard SPA — served at the root URL
+    path("", DashboardView.as_view(), name="dashboard"),
+
     # Django admin panel for the sales team
     path("admin/", admin.site.urls),
 

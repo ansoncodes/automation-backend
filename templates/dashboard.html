@@ -1,0 +1,1760 @@
+<![CDATA[<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SMEC Automation — Sales Dashboard</title>
+  <meta name="description" content="Internal sales dashboard for SMEC Automation — manage leads and campaigns." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ================================================================
+       CUSTOM STYLES — augment Tailwind where inline classes are awkward
+       ================================================================ */
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #f8fafc;
+    }
+
+    /* ---- Sidebar ---- */
+    #sidebar {
+      width: 240px; min-width: 240px;
+      background: #0f172a;
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+    }
+    .nav-link {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 8px;
+      color: #94a3b8; font-size: 14px; font-weight: 500;
+      transition: all 0.15s; cursor: pointer; text-decoration: none;
+    }
+    .nav-link:hover { color: #fff; background: #1e293b; }
+    .nav-link.active { color: #fff; background: #1e293b; }
+
+    /* ---- Cards ---- */
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+
+    /* ---- Status badges ---- */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 9999px;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .badge-new       { background:#dbeafe; color:#1d4ed8; }
+    .badge-reviewed  { background:#fef9c3; color:#a16207; }
+    .badge-contacted { background:#ede9fe; color:#6d28d9; }
+    .badge-quoted    { background:#ffedd5; color:#c2410c; }
+    .badge-closed    { background:#dcfce7; color:#15803d; }
+    .badge-spam      { background:#fee2e2; color:#b91c1c; }
+    .badge-active    { background:#dcfce7; color:#15803d; }
+    .badge-inactive  { background:#f1f5f9; color:#64748b; }
+    .badge-dup       { background:#fee2e2; color:#b91c1c; }
+
+    /* ---- Table rows ---- */
+    .data-row { transition: background 0.1s; cursor: pointer; }
+    .data-row:hover { background: #f1f5f9; }
+
+    /* ---- Spinner ---- */
+    @keyframes _spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid #e2e8f0; border-top-color: #2563eb;
+      border-radius: 50%; animation: _spin .7s linear infinite;
+    }
+    .spinner-sm {
+      width: 14px; height: 14px; border-width: 2px;
+    }
+
+    /* ---- Toast ---- */
+    @keyframes _slideDown {
+      from { opacity: 0; transform: translateY(-8px) scale(.96); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .toast { animation: _slideDown 0.25s ease forwards; }
+
+    /* ---- Lead Detail Full Page ---- */
+    .lead-detail-layout {
+      display: grid;
+      grid-template-columns: 38% 62%;
+      gap: 24px;
+    }
+    .lead-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .lead-header-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      color: #94a3b8; text-transform: uppercase; margin-bottom: 12px;
+    }
+    .field-label {
+      font-size: 11px; font-weight: 600; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+    }
+    .field-value {
+      font-size: 13px; color: #334155; word-break: break-all;
+    }
+    .status-dropdown-container { position: relative; width: 200px; outline: none; }
+    .status-dropdown-header {
+      height: 42px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff;
+      padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; font-size: 14px; font-weight: 500; color: #0f172a; transition: all 0.15s;
+    }
+    .status-dropdown-container:focus-within .status-dropdown-header {
+      border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .status-dropdown-menu {
+      position: absolute; top: calc(100% + 4px); right: 0; width: 100%;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+      z-index: 50; overflow: hidden;
+    }
+    .status-dropdown-menu.hidden { display: none; }
+    .status-dropdown-item {
+      padding: 10px 12px; display: flex; align-items: center; gap: 8px;
+      font-size: 14px; font-weight: 500; cursor: pointer; color: #334155; transition: background 0.1s;
+    }
+    .status-dropdown-item:hover { background: #f8fafc; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .copy-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 4px; border: none;
+      background: transparent; cursor: pointer; color: #94a3b8;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .copy-btn:hover { background: #f1f5f9; color: #475569; }
+
+    /* ---- Bar chart fill ---- */
+    .bar-fill {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #60a5fa, #2563eb);
+      transition: width 0.7s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ---- Scrollbar ---- */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    
+    .campaigns-scroll-wrapper { position: relative; }
+    .campaigns-scroll-wrapper::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 32px;
+      background: linear-gradient(to bottom, transparent, white); pointer-events: none;
+    }
+    .campaigns-scroll-area {
+      max-height: 300px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; padding-bottom: 32px;
+    }
+    .campaigns-scroll-area::-webkit-scrollbar { width: 6px; }
+    .campaigns-scroll-area::-webkit-scrollbar-track { background: transparent; }
+    .campaigns-scroll-area::-webkit-scrollbar-thumb { background-color: #e2e8f0; border-radius: 10px; }
+
+    /* ---- Mobile sidebar ---- */
+    @media (max-width: 767px) {
+      #sidebar {
+        position: fixed; left: 0; top: 0; bottom: 0;
+        z-index: 40; transform: translateX(-100%);
+      }
+      #sidebar.open { transform: translateX(0); }
+    }
+
+    /* ---- Input focus ---- */
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #2563eb !important;
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+
+    /* ---- Button hover ---- */
+    .btn-primary { background: #2563eb; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-ghost:hover { background: #f1f5f9; }
+
+    /* ---- Redesigned Dashboard CSS ---- */
+    .dashboard-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); padding: 24px; transition: all 0.3s ease; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .stat-circle { background-color: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+    .bar-fill { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+    .donut-segment { transition: stroke-dasharray 1s ease-out, opacity 0.2s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
+    @keyframes pulse-bg { 0% { background-color: #e2e8f0; } 50% { background-color: #f1f5f9; } 100% { background-color: #e2e8f0; } }
+    .skeleton { animation: pulse-bg 1.5s infinite; border-radius: 4px; }
+    #campaigns-card { height: fit-content; }
+    @media (min-width: 1024px) {
+      #campaigns-card { height: auto; }
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+
+
+<!-- ================================================================
+     LOGIN SCREEN
+     ================================================================ -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center px-4"
+  style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);">
+  <div class="w-full max-w-sm">
+    <!-- Brand -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 shadow-xl"
+           style="background: linear-gradient(135deg,#3b82f6,#1d4ed8);">
+        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
+               0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0
+               0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">SMEC Automation</h1>
+      <p class="text-slate-400 text-sm mt-1">Sales Dashboard</p>
+    </div>
+    <!-- Card -->
+    <div class="card p-8 shadow-2xl">
+      <h2 class="text-lg font-semibold text-slate-800 mb-6">Sign in to your account</h2>
+      <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Username</label>
+          <input id="login-username" type="text" required autocomplete="username"
+            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 transition-all"
+            placeholder="your_username" />
+        </div>
+        <div class="mb-5">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Password</label>
+          <input id="login-password" type="password" required autocomplete="current-password"
+            class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-800 transition-all"
+            placeholder="••••••••" />
+        </div>
+        <div id="login-error" class="hidden mb-4 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"></div>
+        <button type="submit" id="login-btn"
+          class="btn-primary w-full py-2.5 px-4 rounded-lg text-sm font-semibold text-white transition-all">
+          Sign In
+        </button>
+      </form>
+      <p class="text-center text-xs text-slate-400 mt-5">
+        Need Django admin?
+        <a href="/admin/" target="_blank" class="text-blue-600 hover:underline">Open admin ↗</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     APP SHELL  (hidden until login)
+     ================================================================ -->
+<div id="app-shell" style="display:none; height:100vh; overflow:hidden;">
+  <div style="display:flex; height:100%;">
+
+    <!-- Mobile overlay -->
+    <div id="sidebar-overlay"
+      class="hidden fixed inset-0 z-30 md:hidden"
+      style="background:rgba(0,0,0,.5);"
+      onclick="toggleSidebar()"></div>
+
+    <!-- ============================================================
+         SIDEBAR
+         ============================================================ -->
+    <aside id="sidebar" class="flex flex-col flex-shrink-0 z-40">
+      <!-- Brand -->
+      <div class="px-5 py-5" style="border-bottom:1px solid rgba(255,255,255,.07);">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+               style="background:#2563eb;">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
+                   0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0
+                   0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-white text-sm font-bold leading-tight">SMEC</div>
+            <div style="color:#64748b; font-size:11px;">Automation</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nav links -->
+      <nav class="flex-1 p-3 space-y-1">
+        <a href="#dashboard" id="nav-dashboard" class="nav-link">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10
+                 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1
+                 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0
+                 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+          </svg>
+          Dashboard
+        </a>
+        <a href="#leads" id="nav-leads" class="nav-link">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7
+                 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0
+                 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Leads
+        </a>
+        <a href="#campaigns" id="nav-campaigns" class="nav-link">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436
+                 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988
+                 3.988 0 01-1.564-.317z"/>
+          </svg>
+          Campaigns
+        </a>
+      </nav>
+
+      <!-- User widget -->
+      <div class="p-3" style="border-top:1px solid rgba(255,255,255,.07);">
+        <div class="flex items-center justify-between px-3 py-2.5 rounded-lg" style="background:#1e293b;">
+          <div class="flex items-center gap-2 min-w-0">
+            <div id="user-avatar"
+              class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0
+                     text-white text-xs font-bold"
+              style="background:#2563eb;">U</div>
+            <span id="user-name-display" class="text-white text-xs font-medium truncate">User</span>
+          </div>
+          <button onclick="logout()" title="Sign out"
+            class="text-slate-500 hover:text-red-400 transition-colors flex-shrink-0 ml-2 p-0.5 rounded">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            </svg>
+          </button>
+        </div>
+        <a href="/admin/" target="_blank"
+          class="block text-center text-xs mt-2 transition-colors"
+          style="color:#475569;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
+          Django Admin ↗
+        </a>
+      </div>
+    </aside>
+
+    <!-- ============================================================
+         MAIN AREA
+         ============================================================ -->
+    <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0;">
+
+      <!-- Mobile topbar -->
+      <div class="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 flex-shrink-0">
+        <button onclick="toggleSidebar()" class="text-slate-600 p-1 rounded">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <span class="text-slate-800 font-semibold text-sm">SMEC Automation</span>
+      </div>
+
+      <main id="main-content" style="flex:1; overflow-y:auto; padding:24px;">
+
+        <!-- ======================================================
+             PAGE: DASHBOARD
+             ====================================================== -->
+        <div id="page-dashboard" class="hidden space-y-[24px]">
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-xl font-bold text-slate-800">Dashboard</h1>
+              <p class="text-slate-500 text-sm mt-0.5">Sales overview at a glance</p>
+            </div>
+            <button onclick="loadDashboard()"
+              class="flex items-center gap-1.5 text-sm border border-slate-200 rounded-lg
+                     px-3 py-2 text-slate-600 bg-white btn-ghost transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0
+                     0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              Refresh
+            </button>
+          </div>
+
+          <!-- ROW 1: Stat cards -->
+          <div id="stat-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[24px]"></div>
+
+          <!-- ROW 2: Campaign & Status -->
+          <div class="flex flex-col lg:flex-row gap-[24px]" style="align-items: stretch;">
+            <div class="dashboard-card w-full lg:w-[65%] flex flex-col" id="campaigns-card" style="justify-content: flex-start;"></div>
+            <div class="dashboard-card w-full lg:w-[35%] flex flex-col" id="status-card" style="justify-content: flex-start;"></div>
+          </div>
+
+          <!-- ROW 3: Recent Leads -->
+          <div class="dashboard-card p-0 overflow-hidden" id="recent-leads-card"></div>
+
+          <!-- ROW 4: Quick Stats -->
+          <div class="dashboard-card py-4" id="quick-stats-card"></div>
+        </div>
+
+
+        <!-- ======================================================
+             PAGE: LEADS
+             ====================================================== -->
+        <div id="page-leads" class="hidden">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h1 class="text-xl font-bold text-slate-800">Leads</h1>
+              <p id="leads-count-text" class="text-slate-500 text-sm mt-0.5">Loading…</p>
+            </div>
+            <button id="export-btn" onclick="exportCSV()"
+              class="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-slate-200
+                     rounded-lg text-slate-700 bg-white btn-ghost transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Export CSV
+            </button>
+          </div>
+
+          <!-- Filters -->
+          <div class="card p-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+              <div class="relative sm:col-span-2">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="filter-search" type="text" placeholder="Search name, email, company…"
+                  class="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800"
+                  oninput="debounceFilter()" />
+              </div>
+              <select id="filter-campaign" onchange="applyFilters()"
+                class="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white">
+                <option value="">All Campaigns</option>
+              </select>
+              <select id="filter-status" onchange="applyFilters()"
+                class="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white">
+                <option value="">All Statuses</option>
+                <option value="new">New</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="contacted">Contacted</option>
+                <option value="quoted">Quoted</option>
+                <option value="closed">Closed</option>
+                <option value="spam">Spam</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <select id="filter-industry" onchange="applyFilters()"
+                class="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white">
+                <option value="">All Industries</option>
+              </select>
+              <select id="filter-form-location" onchange="applyFilters()"
+                class="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white">
+                <option value="">All Locations</option>
+              </select>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:500; color:#94a3b8; margin-bottom:4px;">From Date</label>
+                <input id="filter-date-from" type="date" title="From date" onchange="applyFilters()"
+                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:500; color:#94a3b8; margin-bottom:4px;">To Date</label>
+                <input id="filter-date-to" type="date" title="To date" onchange="applyFilters()"
+                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white" />
+              </div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <button onclick="clearFilters()"
+                class="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                ✕ Clear all filters
+              </button>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr style="background:#f8fafc; border-bottom:1px solid #f1f5f9;">
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Submitted</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Company</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Campaign</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Industry</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
+                    <th class="text-center px-1 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider relative group" style="width:70px;">
+                      DUPLICATE
+                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-[#1e293b] text-white text-[12px] rounded px-2 py-1 whitespace-nowrap z-10" style="font-weight:normal; text-transform:none;">Flagged as duplicate submission</div>
+                    </th>
+                    <th class="text-center px-1 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider relative group" style="width:60px;">
+                      SHEETS
+                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-[#1e293b] text-white text-[12px] rounded px-2 py-1 whitespace-nowrap z-10" style="font-weight:normal; text-transform:none;">Synced to Google Sheets</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="leads-tbody">
+                  <tr><td colspan="11" class="text-center py-12 text-slate-400">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="leads-pagination"
+              class="px-4 py-3 flex items-center justify-between"
+              style="border-top:1px solid #f1f5f9;"></div>
+          </div>
+        </div>
+
+
+        <!-- ======================================================
+             PAGE: CAMPAIGNS
+             ====================================================== -->
+        <div id="page-campaigns" class="hidden">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h1 class="text-xl font-bold text-slate-800">Campaigns</h1>
+              <p class="text-slate-500 text-sm mt-0.5">Manage landing page campaigns</p>
+            </div>
+            <button onclick="openCampaignModal(null)"
+              class="btn-primary flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Campaign
+            </button>
+          </div>
+          <div class="card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr style="background:#f8fafc; border-bottom:1px solid #f1f5f9;">
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Slug</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Leads</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Created</th>
+                    <th class="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody id="campaigns-tbody">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================
+             PAGE: LEAD DETAIL
+             ====================================================== -->
+        <div id="page-lead-detail" class="hidden flex-1 w-full" style="max-width: 1200px; margin: 0 auto; padding: 24px;"></div>
+
+      </main><!-- /main-content -->
+    </div>
+  </div>
+</div><!-- /app-shell -->
+
+
+
+<!-- ================================================================
+     CAMPAIGN MODAL
+     ================================================================ -->
+<div id="campaign-modal"
+  style="display:none; position:fixed; inset:0; z-index:60;
+         background:rgba(0,0,0,.5); align-items:center; justify-content:center; padding:16px;">
+  <div class="bg-white rounded-xl shadow-2xl w-full flex flex-col" style="max-width:680px; max-height:92vh;">
+    <!-- Modal header -->
+    <div class="flex items-center justify-between px-6 py-4 flex-shrink-0"
+         style="border-bottom:1px solid #f1f5f9;">
+      <h2 id="modal-title" class="font-semibold text-slate-800">Add Campaign</h2>
+      <button onclick="closeCampaignModal()"
+        class="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Modal body -->
+    <div style="flex:1; overflow-y:auto; padding:24px;">
+      <form id="campaign-form" onsubmit="saveCampaign(event)" class="space-y-4" novalidate>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Name <span class="text-red-500">*</span>
+            </label>
+            <input id="c-name" type="text" required placeholder="Oil & Gas Landing"
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800"
+              oninput="autoSlug()" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Slug <span class="text-red-500">*</span>
+            </label>
+            <input id="c-slug" type="text" required placeholder="oil-gas-landing"
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800 font-mono" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Page URL</label>
+          <input id="c-url" type="url" placeholder="https://smec.com/landing"
+            class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Description</label>
+          <textarea id="c-description" rows="2" placeholder="Internal notes about this campaign…"
+            class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800 resize-none"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Google Sheets ID</label>
+            <input id="c-sheets-id" type="text" placeholder="1BxiMV…"
+              class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-800" />
+          </div>
+        </div>
+
+        <!-- Is Active toggle -->
+        <div class="flex items-center gap-3">
+          <button type="button" id="c-active-btn" onclick="toggleActiveState()"
+            role="switch" aria-checked="true"
+            style="position:relative; display:inline-flex; width:36px; height:20px;
+                   border-radius:9999px; border:none; cursor:pointer; background:#2563eb;
+                   transition:background .2s; padding:2px;">
+            <span id="c-active-knob"
+              style="width:16px; height:16px; border-radius:50%; background:white;
+                     box-shadow:0 1px 3px rgba(0,0,0,.2);
+                     transition:transform .2s; transform:translateX(16px);"></span>
+          </button>
+          <div>
+            <span class="text-sm font-medium text-slate-700">Is Active</span>
+            <span id="c-active-label" class="text-slate-400 text-xs ml-1">(accepts submissions)</span>
+          </div>
+        </div>
+
+        <!-- API key (edit mode only) -->
+        <div id="c-apikey-row" class="hidden">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">API Key (read-only)</label>
+          <div class="flex gap-2">
+            <input id="c-apikey" type="text" readonly
+              class="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg text-slate-500 bg-slate-50 font-mono" />
+            <button type="button" onclick="copyApiKey()"
+              class="px-3 py-2 text-xs border border-slate-200 rounded-lg text-slate-600 btn-ghost transition-colors whitespace-nowrap">
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- Fields config builder -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Fields Configuration</label>
+            <button type="button" onclick="addFieldRow()"
+              class="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Row
+            </button>
+          </div>
+          <div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+            <table class="w-full text-sm">
+              <thead>
+                <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                  <th class="text-left px-3 py-2 text-xs font-semibold text-slate-500">Field</th>
+                  <th class="text-left px-3 py-2 text-xs font-semibold text-slate-500">Visibility</th>
+                  <th class="px-3 py-2 w-8"></th>
+                </tr>
+              </thead>
+              <tbody id="fields-config-tbody">
+                <tr id="fields-empty-row">
+                  <td colspan="3" class="text-center py-4 text-slate-400 text-xs">
+                    No fields configured — click "Add Row" to begin.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Modal footer -->
+    <div class="flex items-center justify-end gap-3 px-6 py-4 flex-shrink-0"
+         style="border-top:1px solid #f1f5f9;">
+      <button type="button" onclick="closeCampaignModal()"
+        class="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg btn-ghost transition-colors">
+        Cancel
+      </button>
+      <button type="button"
+        onclick="document.getElementById('campaign-form').dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}))"
+        class="btn-primary px-5 py-2 text-sm font-semibold text-white rounded-lg transition-colors">
+        Save Campaign
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     LOADING OVERLAY
+     ================================================================ -->
+<div id="loading-overlay"
+  style="display:none; position:fixed; inset:0; z-index:100;
+         background:rgba(15,23,42,.35); align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:16px; padding:20px 28px;
+              box-shadow:0 20px 60px rgba(0,0,0,.2); display:flex; align-items:center; gap:14px;">
+    <div class="spinner"></div>
+    <span class="text-slate-700 font-medium text-sm">Loading…</span>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     TOAST CONTAINER
+     ================================================================ -->
+<div id="toast-container"
+  style="position:fixed; top:16px; right:16px; z-index:200;
+         display:flex; flex-direction:column; gap:8px; pointer-events:none; max-width:320px;">
+</div>
+
+
+<!-- ================================================================
+     JAVASCRIPT
+     ================================================================ -->
+<script>
+'use strict';
+
+/* ===================================================================
+   CONSTANTS & STATE
+   =================================================================== */
+const API_BASE = window.location.origin;
+
+// Auth — stored only in memory, never in localStorage
+let _token    = null;
+let _username = null;
+
+// App
+let _currentPage = '';
+let _campaigns   = [];
+
+// Leads page
+let _leadsPage     = 1;
+let _leadsCount    = 0;
+let _filterTimer   = null;
+
+// Lead panel
+let _currentLead = null;
+
+// Campaign modal
+let _editingCampaignId = null;
+let _campaignIsActive  = true;
+
+/* ===================================================================
+   LOADING OVERLAY
+   =================================================================== */
+let _loadCount = 0;
+function showLoading() {
+  _loadCount++;
+  const el = document.getElementById('loading-overlay');
+  el.style.display = 'flex';
+}
+function hideLoading() {
+  _loadCount = Math.max(0, _loadCount - 1);
+  if (_loadCount === 0) document.getElementById('loading-overlay').style.display = 'none';
+}
+
+/* ===================================================================
+   API CALL HELPER
+   =================================================================== */
+async function apiCall(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (_token) headers['Authorization'] = `Token ${_token}`;
+  if (options.headers) Object.assign(headers, options.headers);
+
+  showLoading();
+  try {
+    const res = await fetch(API_BASE + path, { ...options, headers });
+
+    if (res.status === 401) {
+      logout();
+      showToast('Session expired. Please sign in again.', 'error');
+      return null;
+    }
+
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { data = null; }
+
+    if (!res.ok) {
+      let msg = `Error ${res.status}`;
+      if (res.status === 404) {
+        msg = 'Not found';
+      } else if (data) {
+        if (data.error)       msg = data.error;
+        else if (data.detail) msg = data.detail;
+        else {
+          const key = Object.keys(data)[0];
+          if (key) {
+            const v = data[key];
+            msg = Array.isArray(v) ? v[0] : String(v);
+          }
+        }
+      }
+      showToast(msg, 'error');
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    if (err instanceof TypeError) {
+      showToast('Connection error. Is the server running?', 'error');
+    } else {
+      showToast('Unexpected error: ' + err.message, 'error');
+    }
+    return null;
+  } finally {
+    hideLoading();
+  }
+}
+
+/* ===================================================================
+   TOAST NOTIFICATIONS
+   =================================================================== */
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const id = 'toast-' + Date.now() + Math.random();
+
+  const cfg = {
+    success: { bg:'#f0fdf4', border:'#bbf7d0', text:'#15803d', icon:'✓' },
+    error:   { bg:'#fef2f2', border:'#fecaca', text:'#dc2626', icon:'✕' },
+    info:    { bg:'#eff6ff', border:'#bfdbfe', text:'#2563eb', icon:'ℹ' },
+  }[type] || { bg:'#f8fafc', border:'#e2e8f0', text:'#475569', icon:'•' };
+
+  const el = document.createElement('div');
+  el.id = id;
+  el.className = 'toast';
+  el.style.cssText = `
+    pointer-events:auto; background:${cfg.bg}; border:1px solid ${cfg.border};
+    border-radius:10px; padding:12px 14px; display:flex; align-items:flex-start;
+    gap:10px; box-shadow:0 4px 16px rgba(0,0,0,.12); max-width:320px;
+  `;
+  el.innerHTML = `
+    <span style="color:${cfg.text}; font-weight:700; font-size:14px; flex-shrink:0; margin-top:1px;">${cfg.icon}</span>
+    <span style="color:#374151; font-size:13px; line-height:1.45; flex:1;">${escHtml(message)}</span>
+    <button onclick="this.closest('[id]').remove()"
+      style="color:#9ca3af; font-size:18px; line-height:1; flex-shrink:0;
+             background:none; border:none; cursor:pointer; padding:0; margin-top:-1px;">×</button>
+  `;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+/* ===================================================================
+   AUTHENTICATION
+   =================================================================== */
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  const btn      = document.getElementById('login-btn');
+
+  errEl.classList.add('hidden');
+  btn.disabled = true; btn.textContent = 'Signing in…'; btn.style.opacity = '.7';
+
+  try {
+    const res  = await fetch(API_BASE + '/api/auth/login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Invalid credentials';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    _token    = data.token;
+    _username = data.username;
+
+    // Update sidebar
+    document.getElementById('user-name-display').textContent = _username;
+    document.getElementById('user-avatar').textContent = _username[0].toUpperCase();
+
+    // Switch screens
+    document.getElementById('login-screen').style.display = 'none';
+    const shell = document.getElementById('app-shell');
+    shell.style.display = 'block';
+
+    window.location.hash = '#dashboard';
+    handleHashChange();
+  } catch (_err) {
+    errEl.textContent = 'Connection error. Is the server running?';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sign In'; btn.style.opacity = '1';
+  }
+}
+
+function logout() {
+  _token = null; _username = null; _currentLead = null;
+  closeCampaignModal();
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-password').value = '';
+}
+
+/* ===================================================================
+   NAVIGATION & ROUTING
+   =================================================================== */
+window.addEventListener('hashchange', handleHashChange);
+
+async function handleHashChange() {
+  if (!_token) return; // Wait for login
+
+  let hash = window.location.hash || '#dashboard';
+  let page = '';
+  let leadId = null;
+
+  if (hash === '#dashboard') page = 'dashboard';
+  else if (hash === '#leads') page = 'leads';
+  else if (hash === '#campaigns') page = 'campaigns';
+  else if (hash.startsWith('#lead-')) {
+    page = 'lead-detail';
+    leadId = hash.replace('#lead-', '');
+  } else {
+    page = 'dashboard';
+  }
+
+  _currentPage = page;
+
+  // Close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.add('hidden');
+
+  // Show/hide pages
+  ['dashboard','leads','campaigns','lead-detail'].forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.classList.toggle('hidden', p !== page);
+    const nav = document.getElementById('nav-' + p);
+    if (nav) nav.classList.toggle('active', p === page);
+  });
+  // Keep Leads active in sidebar when viewing a lead detail
+  if (page === 'lead-detail') {
+    document.getElementById('nav-leads').classList.add('active');
+  }
+
+  if (page === 'dashboard')  loadDashboard();
+  else if (page === 'leads') { 
+    if (!document.getElementById('leads-tbody').querySelector('tr.data-row')) {
+      _leadsPage = 1; resetFilterDropdowns(); loadLeads();
+    }
+  }
+  else if (page === 'campaigns') loadCampaigns();
+  else if (page === 'lead-detail' && leadId) {
+    document.getElementById('page-lead-detail').innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:60vh;"><div class="spinner"></div></div>';
+    const lead = await apiCall(`/api/leads/${leadId}/`);
+    if (lead) {
+      _currentLead = lead;
+      loadLeadDetailPage(lead);
+    } else {
+      document.getElementById('page-lead-detail').innerHTML = `
+        <div class="lead-card text-center py-12">
+          <div class="text-slate-400 text-sm mb-4">Lead not found or you don't have access.</div>
+          <button onclick="window.location.hash='#leads'" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold text-white">Back to Leads</button>
+        </div>
+      `;
+    }
+  }
+}
+
+function navigate(page) {
+  window.location.hash = '#' + page;
+  return false;
+}
+
+function toggleSidebar() {
+  const s = document.getElementById('sidebar');
+  const o = document.getElementById('sidebar-overlay');
+  const open = s.classList.toggle('open');
+  o.classList.toggle('hidden', !open);
+}
+
+/* ===================================================================
+   DASHBOARD
+   =================================================================== */
+async function loadDashboard() {
+  renderSkeletons();
+  let statsError = false, recentError = false;
+  let stats = null, recent = null;
+
+  try { stats = await apiCall('/api/dashboard/stats/'); } catch(e) { statsError = true; }
+  try { recent = await apiCall('/api/leads/?page=1&page_size=5&ordering=-submitted_at'); } catch(e) { recentError = true; }
+
+  if (statsError && recentError) {
+    document.getElementById('stat-cards').innerHTML = '<div class="col-span-4 text-center py-8 text-slate-400">Unable to load dashboard data. Check your connection.</div>';
+    return;
+  }
+  if (stats) renderStatCards(stats);
+  if (stats) renderCampaignsSection(stats);
+  if (stats) renderStatusChart(stats);
+  if (recent) renderRecentLeads(recent);
+  if (stats) renderQuickStats(stats);
+}
+
+function renderSkeletons() {
+  ['stat-cards','campaigns-card','status-card','recent-leads-card','quick-stats-card'].forEach(id => {
+    document.getElementById(id).innerHTML = `<div class="skeleton" style="height:${id==='stat-cards'?90:200}px;"></div>`;
+  });
+  // For stat-cards, make four skeleton boxes
+  document.getElementById('stat-cards').innerHTML =
+    `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[24px]">` +
+    `<div class="skeleton" style="height:100px;"></div>`.repeat(4) + `</div>`;
+}
+
+function renderStatCards(stats) {
+  const c = [
+    { label:'Total Leads',        value:stats.total_leads,        icon:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', color:'#3b82f6' },
+    { label:'New This Week',     value:stats.this_week_count,    icon:'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', color:'#8b5cf6' },
+    { label:'Active Campaigns',  value:stats.active_campaigns,   icon:'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z', color:'#10b981' },
+    { label:'Form Locations (Unique)', value:stats.unique_locations, icon:'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z', color:'#f59e0b' },
+  ];
+  document.getElementById('stat-cards').innerHTML = c.map(s => `
+    <div class="dashboard-card stat-card cursor-default" style="--accent:${s.color};">
+      <div class="flex items-center gap-3">
+        <div class="stat-circle w-[42px] h-[42px] rounded-xl flex items-center justify-center flex-shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${s.icon}"/>
+          </svg>
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div class="text-2xl font-bold text-slate-800">${s.value}</div>
+          <div class="text-xs text-slate-500 font-medium mt-0.5">${s.label}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCampaignsSection(stats) {
+  const campaigns = stats.campaign_leads || [];
+  const max = Math.max(...campaigns.map(c => c.count), 1);
+  const el = document.getElementById('campaigns-card');
+  el.innerHTML = `
+    <h2 class="text-base font-semibold text-slate-800 mb-4">Campaigns</h2>
+    <div class="campaigns-scroll-wrapper flex-1" style="min-height:0;">
+      <div class="campaigns-scroll-area" style="padding-right:4px;">
+        ${campaigns.length === 0
+          ? '<div class="text-center py-8 text-slate-400 text-sm">No campaigns with leads yet</div>'
+          : campaigns.map(c => `
+            <div class="flex items-center gap-3 mb-3">
+              <div class="flex-1">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-medium text-slate-700 truncate">${escHtml(c.name)}</span>
+                  <span class="text-xs font-semibold text-slate-500 flex-shrink-0 ml-2">${c.count}</span>
+                </div>
+                <div style="height:10px; background:#f1f5f9; border-radius:5px; overflow:hidden;">
+                  <div class="bar-fill" style="width:${Math.max(3, (c.count / max) * 100)}%;"></div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderStatusChart(stats) {
+  const statuses = ['new','reviewed','contacted','quoted','closed','spam'];
+  const labels   = ['New','Reviewed','Contacted','Quoted','Closed','Spam'];
+  const counts   = statuses.map(s => stats[`${s}_count`] || 0);
+  const total    = counts.reduce((a,b)=>a+b, 1);
+  const colors   = ['#3b82f6','#eab308','#8b5cf6','#f97316','#22c55e','#ef4444'];
+  const donutId  = 'donut-svg';
+  const cx=50, cy=50, r=30, circ=2*Math.PI*r;
+  let cumulative=0;
+  const segments = counts.map((v,i)=>{
+    const pct = v/total;
+    const offset = cumulative;
+    const len = pct*circ;
+    cumulative += len;
+    return {color:colors[i], offset, len, label:labels[i], count:v, pct:(pct*100).toFixed(1)};
+  });
+  const el = document.getElementById('status-card');
+  el.innerHTML = `
+    <h2 class="text-base font-semibold text-slate-800 mb-2">Lead Status</h2>
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <svg id="${donutId}" width="140" height="140" viewBox="0 0 100 100">
+        ${segments.map((s,i)=>`
+          <circle class="donut-segment" cx="${cx}" cy="${cy}" r="${r}" fill="none"
+            stroke="${s.color}" stroke-width="10"
+            stroke-dasharray="${s.len} ${circ - s.len}"
+            stroke-dashoffset="${-s.offset}"
+            opacity="0" />
+        `).join('')}
+        <text x="50" y="52" text-anchor="middle" font-size="16" font-weight="bold" fill="#0f172a">${total-1}</text>
+        <text x="50" y="64" text-anchor="middle" font-size="8" fill="#94a3b8">Total</text>
+      </svg>
+      <div style="width:100%; margin-top:12px;">
+        ${segments.filter(s=>s.count>0).map(s=>`
+          <div class="flex items-center justify-between py-1">
+            <div class="flex items-center gap-2">
+              <span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block;"></span>
+              <span class="text-xs font-medium text-slate-600">${s.label}</span>
+            </div>
+            <span class="text-xs font-semibold text-slate-500">${s.count} (${s.pct}%)</span>
+          </div>
+        `).join('')}
+        ${segments.filter(s=>s.count>0).length===0 ? '<div class="text-center py-2 text-slate-400 text-xs">No leads</div>' : ''}
+      </div>
+    </div>
+  `;
+  // Animate segments
+  requestAnimationFrame(()=>{
+    document.querySelectorAll('.donut-segment').forEach(el=>el.style.opacity='1');
+  });
+}
+
+function renderRecentLeads(data) {
+  const leads = data.results || [];
+  const el = document.getElementById('recent-leads-card');
+  el.innerHTML = `
+    <div style="padding:20px 24px; border-bottom:1px solid #f1f5f9;">
+      <h2 class="text-base font-semibold text-slate-800">Recent Leads</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Name</th>
+            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Company</th>
+            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Campaign</th>
+            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Status</th>
+            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${leads.length === 0
+            ? '<tr><td colspan="5" class="text-center py-8 text-slate-400">No recent leads</td></tr>'
+            : leads.map(l => `
+              <tr class="data-row" onclick="window.location.hash='#lead-${l.id}'">
+                <td class="px-4 py-3 font-medium text-slate-700">${escHtml(l.name)}</td>
+                <td class="px-4 py-3 text-slate-600">${escHtml(l.company || '—')}</td>
+                <td class="px-4 py-3 text-slate-600">${escHtml(l.campaign_name || '—')}</td>
+                <td class="px-4 py-3">${statusBadge(l.status)}</td>
+                <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatDate(l.submitted_at)}</td>
+              </tr>
+            `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderQuickStats(stats) {
+  const el = document.getElementById('quick-stats-card');
+  const items = [
+    { label:'Avg. Leads / Day (30d)', value:stats.avg_leads_per_day_30d?.toFixed(1) || '0' },
+    { label:'Conversion Rate (Quoted / Total)', value:stats.conversion_rate_quoted != null ? (stats.conversion_rate_quoted * 100).toFixed(1) + '%' : '0%' },
+  ];
+  el.innerHTML = `
+    <div class="grid grid-cols-2 divide-x divide-slate-100">
+      ${items.map(i => `
+        <div class="text-center px-4 py-2">
+          <div class="text-lg font-bold text-slate-800">${i.value}</div>
+          <div class="text-xs text-slate-500 mt-0.5">${i.label}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+/* ===================================================================
+   LEADS LIST
+   =================================================================== */
+let _debounceTimer = null;
+
+function debounceFilter() {
+  clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(applyFilters, 300);
+}
+
+function escHtml(s) {
+  if (typeof s !== 'string' && typeof s !== 'number') return s ?? '—';
+  s = String(s);
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function statusBadge(status) {
+  const cls = 'badge badge-' + (status || 'new');
+  return `<span class="${cls}">${escHtml(status || 'new')}</span>`;
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  } catch { return iso; }
+}
+
+function formatDateShort(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric' });
+  } catch { return iso; }
+}
+
+async function loadLeads() {
+  const tbody = document.getElementById('leads-tbody');
+  tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12"><div class="spinner" style="margin:0 auto;"></div></td></tr>';
+
+  const params = new URLSearchParams();
+  if (_leadsPage) params.set('page', _leadsPage);
+  params.set('page_size', '20');
+  params.set('ordering', '-submitted_at');
+
+  const search = document.getElementById('filter-search').value.trim();
+  if (search) params.set('search', search);
+  const campaign = document.getElementById('filter-campaign').value;
+  if (campaign) params.set('campaign', campaign);
+  const status = document.getElementById('filter-status').value;
+  if (status) params.set('status', status);
+  const industry = document.getElementById('filter-industry').value;
+  if (industry) params.set('industry', industry);
+  const location = document.getElementById('filter-form-location').value;
+  if (location) params.set('form_location', location);
+  const dateFrom = document.getElementById('filter-date-from').value;
+  if (dateFrom) params.set('date_from', dateFrom);
+  const dateTo = document.getElementById('filter-date-to').value;
+  if (dateTo) params.set('date_to', dateTo);
+
+  const data = await apiCall(`/api/leads/?${params.toString()}`);
+  if (!data) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12 text-slate-400">Failed to load leads</td></tr>'; return; }
+
+  _leadsCount = data.count || 0;
+  document.getElementById('leads-count-text').textContent = `${_leadsCount} leads`;
+
+  tbody.innerHTML = (data.results || []).map(l => `
+    <tr class="data-row" onclick="window.location.hash='#lead-${l.id}'">
+      <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${formatDate(l.submitted_at)}</td>
+      <td class="px-4 py-3 font-medium text-slate-700">${escHtml(l.name)}</td>
+      <td class="px-4 py-3 text-slate-600">${escHtml(l.company || '—')}</td>
+      <td class="px-4 py-3 text-slate-600 max-w-[200px] truncate" title="${escHtml(l.email)}">${escHtml(l.email)}</td>
+      <td class="px-4 py-3 text-slate-600">${escHtml(l.campaign_name || '—')}</td>
+      <td class="px-4 py-3 text-slate-600">${escHtml(l.industry || '—')}</td>
+      <td class="px-4 py-3">${statusBadge(l.status)}</td>
+      <td class="px-4 py-3 text-slate-600">${escHtml(l.form_location || '—')}</td>
+      <td class="px-4 py-3 text-center">${l.is_duplicate ? '<span class="text-red-500 font-bold" title="Flagged as duplicate">⚠</span>' : ''}</td>
+      <td class="px-4 py-3 text-center">${l.sheets_synced ? '<span class="text-green-500 font-bold" title="Synced to Sheets">✓</span>' : ''}</td>
+    </tr>
+  `).join('');
+
+  if ((data.results || []).length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12 text-slate-400">No leads match your filters</td></tr>';
+  }
+
+  renderPagination(data);
+}
+
+function renderPagination(data) {
+  const el = document.getElementById('leads-pagination');
+  const total = data.count || 0;
+  const page = _leadsPage;
+  const pageSize = 20;
+  const totalPages = Math.ceil(total / pageSize) || 1;
+
+  el.innerHTML = `
+    <span class="text-sm text-slate-500">Page ${page} of ${totalPages} (${total} total)</span>
+    <div class="flex gap-2">
+      <button onclick="goToPage(${page - 1})" ${page <= 1 ? 'disabled' : ''}
+        class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
+               ${page <= 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 btn-ghost cursor-pointer'}">
+        ← Prev
+      </button>
+      <button onclick="goToPage(${page + 1})" ${page >= totalPages ? 'disabled' : ''}
+        class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
+               ${page >= totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 btn-ghost cursor-pointer'}">
+        Next →
+      </button>
+    </div>
+  `;
+}
+
+function goToPage(p) {
+  _leadsPage = p;
+  loadLeads();
+}
+
+function applyFilters() {
+  _leadsPage = 1;
+  loadLeads();
+}
+
+function clearFilters() {
+  document.getElementById('filter-search').value = '';
+  document.getElementById('filter-campaign').value = '';
+  document.getElementById('filter-status').value = '';
+  document.getElementById('filter-industry').value = '';
+  document.getElementById('filter-form-location').value = '';
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
+  applyFilters();
+}
+
+async function resetFilterDropdowns() {
+  // Populate campaign and industry filter dropdowns from the leads data
+  const campaignSel = document.getElementById('filter-campaign');
+  const industrySel = document.getElementById('filter-industry');
+  const locationSel = document.getElementById('filter-form-location');
+  // Only populate once
+  if (campaignSel.options.length > 1) return;
+  
+  const data = await apiCall('/api/leads/?page=1&page_size=1');
+  if (!data || data.filters === undefined) return;
+  
+  const filters = data.filters || {};
+  
+  if (filters.campaigns) {
+    campaignSel.innerHTML = '<option value="">All Campaigns</option>' + 
+      filters.campaigns.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+  }
+  if (filters.industries) {
+    industrySel.innerHTML = '<option value="">All Industries</option>' + 
+      filters.industries.map(i => `<option value="${escHtml(i)}">${escHtml(i)}</option>`).join('');
+  }
+  if (filters.locations) {
+    locationSel.innerHTML = '<option value="">All Locations</option>' + 
+      filters.locations.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
+  }
+}
+
+/* ===================================================================
+   LEAD DETAIL PAGE
+   =================================================================== */
+let _panelOriginalNotes = '';
+
+function loadLeadDetailPage(lead) {
+  _panelOriginalNotes = lead.notes || '';
+  const container = document.getElementById('page-lead-detail');
+  const a = lead.attachments && lead.attachments.length > 0 ? lead.attachments : [];
+  
+  container.innerHTML = `
+    <div>
+      <!-- Back button -->
+      <button onclick="window.location.hash='#leads'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        Back to Leads
+      </button>
+
+      <div class="lead-detail-layout">
+        <!-- LEFT COLUMN -->
+        <div>
+          <div class="lead-header-card">
+            <div class="flex items-center justify-between mb-1">
+              <h1 class="text-lg font-bold text-slate-800">${escHtml(lead.name)}</h1>
+              ${statusDropdown(lead.status)}
+            </div>
+            <div class="mt-3 space-y-1.5 text-sm text-slate-600">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Submitted</span>
+                <span>${formatDate(lead.submitted_at)}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Campaign</span>
+                <span class="font-medium">${escHtml(lead.campaign_name || '—')}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Form</span>
+                <span>${escHtml(lead.form_location || '—')}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-4">
+            <!-- Contact Info -->
+            <div class="lead-card">
+              <div class="section-label">Contact Information</div>
+              <div class="space-y-3">
+                <div>
+                  <div class="field-label">Email</div>
+                  <div class="field-value">${escHtml(lead.email || '—')}</div>
+                </div>
+                <div>
+                  <div class="field-label">Phone</div>
+                  <div class="field-value">${escHtml(lead.phone || '—')}</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Company Info -->
+            <div class="lead-card">
+              <div class="section-label">Company Information</div>
+              <div class="space-y-3">
+                <div>
+                  <div class="field-label">Company Name</div>
+                  <div class="field-value">${escHtml(lead.company || '—')}</div>
+                </div>
+                <div>
+                  <div class="field-label">Industry</div>
+                  <div class="field-value">${escHtml(lead.industry || '—')}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+          <div class="lead-header-card">
+            <div class="section-label">Enquiry Details</div>
+            <div class="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${escHtml(lead.message || 'No message provided.')}</div>
+          </div>
+
+          <div class="lead-card">
+            <div class="section-label">Attachments</div>
+            ${a.length === 0
+              ? '<div class="text-sm text-slate-400">No attachments</div>'
+              : a.map(f => {
+                  const ext = (f.filename || f.name || '').split('.').pop().toLowerCase();
+                  const isImg = ['jpg','jpeg','png','gif','webp','svg'].includes(ext);
+                  return '<div class="flex items-center gap-2 py-1.5">' +
+                    (isImg
+                      ? '<span class="text-blue-500 text-sm">🖼</span>'
+                      : '<span class="text-slate-400 text-sm">📄</span>') +
+                    '<a href="' + (f.url || '#') + '" target="_blank" class="text-sm text-blue-600 hover:underline truncate">' + escHtml(f.filename || f.name || 'file') + '</a>' +
+                    '</div>';
+                }).join('')}
+          </div>
+
+          <div class="lead-card">
+            <div class="section-label">Notes</div>
+            <textarea id="panel-notes" rows="5"
+              class="w-full mt-2 px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 resize-y"
+              placeholder="Add internal notes…">${escHtml(lead.notes || '')}</textarea>
+            <div class="flex justify-end mt-2">
+              <button onclick="saveNotes(${lead.id})"
+                class="btn-primary px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors">Save Notes</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function statusDropdown(currentStatus) {
+  const statuses = ['new','reviewed','contacted','quoted','closed','spam'];
+  const colors = ['#3b82f6','#eab308','#8b5cf6','#f97316','#22c55e','#ef4444'];
+  const labels = ['New','Reviewed','Contacted','Quoted','Closed','Spam'];
+  const idx = statuses.indexOf(currentStatus);
+  const dotColor = colors[idx] || '#94a3b8';
+
+  return `
+    <div class="status-dropdown-container" tabindex="0" 
+      onfocusout="setTimeout(()=>document.querySelector('.status-dropdown-menu')?.classList.add('hidden'),200)">
+      <div class="status-dropdown-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+        <span class="flex items-center gap-2">
+          <span class="status-dot" style="background:${dotColor}"></span>
+          ${(labels[idx] || currentStatus).charAt(0).toUpperCase() + (labels[idx] || currentStatus).slice(1)}
+        </span>
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </div>
+      <div class="status-dropdown-menu hidden">
+        ${statuses.map((s, i) => `
+          <div class="status-dropdown-item" onclick="updateLeadStatus(${s === currentStatus ? 'null' : "'"+s+"'"});this.closest('.status-dropdown-menu').classList.add('hidden')">
+            <span class="status-dot" style="background:${colors[i]}"></span>
+            ${labels[i]}
+            ${s === currentStatus ? '<span class="ml-auto text-xs text-green-600">✓</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function updateLeadStatus(newStatus) {
+  if (!newStatus) return;
+  const leadId = _currentLead?.id;
+  if (!leadId) return;
+  const data = await apiCall(`/api/leads/${leadId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: newStatus }),
+  });
+  if (data) {
+    _currentLead.status = newStatus;
+    const header = document.querySelector('.lead-header-card');
+    if (header) header.querySelector('.status-dropdown-container')?.outerHTML = statusDropdown(newStatus);
+    showToast('Status updated to ' + newStatus);
+  }
+}
+
+async function saveNotes(leadId) {
+  const notes = document.getElementById('panel-notes').value;
+  const data = await apiCall(`/api/leads/${leadId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes }),
+  });
+  if (data) {
+    _panelOriginalNotes = notes;
+    showToast('Notes saved');
+  }
+}
+
+/* ===================================================================
+   EXPORT CSV
+   =================================================================== */
+async function exportCSV() {
+  const params = new URLSearchParams();
+  params.set('export', 'csv');
+  const search = document.getElementById('filter-search').value.trim();
+  if (search) params.set('search', search);
+  const campaign = document.getElementById('filter-campaign').value;
+  if (campaign) params.set('campaign', campaign);
+  const status = document.getElementById('filter-status').value;
+  if (status) params.set('status', status);
+  const industry = document.getElementById('filter-industry').value;
+  if (industry) params.set('industry', industry);
+  const location = document.getElementById('filter-form-location').value;
+  if (location) params.set('form_location', location);
+  const dateFrom = document.getElementById('filter-date-from').value;
+  if (dateFrom) params.set('date_from', dateFrom);
+  const dateTo = document.getElementById('filter-date-to').value;
+  if (dateTo) params.set('date_to', dateTo);
+
+  showLoading();
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (_token) headers['Authorization'] = `Token ${_token}`;
+    const res = await fetch(API_BASE + `/api/leads/?${params.toString()}`, { headers });
+    if (!res.ok) { showToast('Export failed', 'error'); return; }
+    const data = await res.json();
+    if (!data || !data.results || data.results.length === 0) {
+      showToast('No leads to export', 'info');
+      return;
+    }
+    const rows = [['Submitted','Name','Email','Phone','Company','Industry','Campaign','Status','Location','Message','Notes']];
+    data.results.forEach(l => {
+      rows.push([l.submitted_at||'',l.name||'',l.email||'',l.phone||'',l.company||'',l.industry||'',l.campaign_name||'',l.status||'',l.form_location||'',(l.message||'').replace(/\n/g,' '),(l.notes||'').replace(/\n/g,' ')]);
+    });
+    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'leads_export.csv'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV downloaded');
+  } catch(e) {
+    showToast('Export failed: ' + e.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+/* ===================================================================
+   CAMPAIGNS
+   =================================================================== */
+async function loadCampaigns() {
+  const tbody = document.getElementById('campaigns-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12"><div class="spinner" style="margin:0 auto;"></div></td></tr>';
+  const data = await apiCall('/api/campaigns/');
+  if (!data) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-slate-400">Failed to load campaigns</td></tr>'; return; }
+  _campaigns = data.results || data;
+  tbody.innerHTML = _campaigns.map(c => `
+    <tr class="data-row" onclick="openCampaignModal(${c.id})">
+      <td class="px-4 py-3 font-medium text-slate-700">${escHtml(c.name)}</td>
+      <td class="px-4 py-3 text-slate-500 font-mono text-xs">${escHtml(c.slug)}</td>
+      <td class="px-4 py-3">${c.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>'}</td>
+      <td class="px-4 py-3 text-slate-600">${c.lead_count ?? '—'}</td>
+      <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatDateShort(c.created_at)}</td>
+      <td class="px-4 py-3 text-right">
+        <button onclick="event.stopPropagation();openCampaignModal(${c.id})" 
+          class="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">Edit</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/* ===================================================================
+   CAMPAIGN MODAL
+   =================================================================== */
+function openCampaignModal(campaignId) {
+  _editingCampaignId = campaignId;
+  const modal = document.getElementById('campaign-modal');
+  modal.style.display = 'flex';
+
+  if (campaignId === null) {
+    document.getElementById('modal-title').textContent = 'Add Campaign';
+    document.getElementById('campaign-form').reset();
+    document.getElementById('c-apikey-row').classList.add('hidden');
+    document.getElementById('c-active-btn').setAttribute('aria-checked','true');
+    document.getElementById('c-active-btn').style.background = '#2563eb';
+    document.getElementById('c-active-knob').style.transform = 'translateX(16px)';
+    document.getElementById('c-active-label').textContent = '(accepts submissions)';
+    _campaignIsActive = true;
+    renderFieldsConfig([]);
+    return;
+  }
+
+  const campaign = _campaigns.find(c => c.id === campaignId);
+  if (!campaign) return;
+
+  document.getElementById('modal-title').textContent = 'Edit Campaign';
+  document.getElementById('c-name').value = campaign.name || '';
+  document.getElementById('c-slug').value = campaign.slug || '';
+  document.getElementById('c-url').value = campaign.page_url || '';
+  document.getElementById('c-description').value = campaign.description || '';
+  document.getElementById('c-sheets-id').value = campaign.google_sheets_id || '';
+
+  _campaignIsActive = campaign.is_active !== false;
+  document.getElementById('c-active-btn').setAttribute('aria-checked', _campaignIsActive ? 'true' : 'false');
+  document.getElementById('c-active-btn').style.background = _campaignIsActive ? '#2563eb' : '#e2e8f0';
+  document.getElementById('c-active-knob').style.transform = _campaignIsActive ? 'translateX(16px)' : 'translateX(2px)';
+  document.getElementById('c-active-label').textContent = _campaignIsActive ? '(accepts submissions)' : '(paused — not accepting)';
+
+  document.getElementById('c-apikey-row').classList.remove('hidden');
+  document.getElementById('c-apikey').value = campaign.api_key || '—';
+
+  renderFieldsConfig(campaign.fields_config || []);
+}
+
+function closeCampaignModal() {
+  document.getElementById('campaign-modal').style.display = 'none';
+  _editingCampaignId = null;
+}
+
+function toggleActiveState() {
+  _campaignIsActive = !_campaignIsActive;
+  const btn = document.getElementById('c-active-btn');
+  btn.setAttribute('aria-checked', _campaignIsActive ? 'true' : 'false');
+  btn.style.background = _campaignIsActive ? '#2563eb' : '#e2e8f0';
+  document.getElementById('c-active-knob').style.transform = _campaignIsActive ? 'translateX(16px)' : 'translateX(2px)';
+  document.getElementById('c-active-label').textContent = _campaignIsActive ? '(accepts submissions)' : '(paused — not accepting)';
+}
+
+function autoSlug() {
+  const name = document.getElementById('c-name').value;
+  document.getElementById('c-slug').value = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function renderFieldsConfig(fields) {
+  const tbody = document.getElementById('fields-config-tbody');
+  if (!fields || fields.length === 0) {
+    tbody.innerHTML = '<tr id="fields-empty-row"><td colspan="3" class="text-center py-4 text-slate-400 text-xs">No fields configured — click "Add Row" to begin.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = fields.map((f, i) => `
+    <tr>
+      <td class="px-3 py-2">
+        <input type="text" value="${escHtml(f.field || '')}" placeholder="field_name"
+          class="w-full px-2 py-1 text-xs border border-slate-200 rounded text-slate-700" />
+      </td>
+      <td class="px-3 py-2">
+        <select class="px-2 py-1 text-xs border border-slate-200 rounded text-slate-700 bg-white">
+          <option value="visible" ${f.visibility === 'hidden' ? '' : 'selected'}>Visible</option>
+          <option value="hidden" ${f.visibility === 'hidden' ? 'selected' : ''}>Hidden</option>
+        </select>
+      </td>
+      <td class="px-3 py-2 text-center">
+        <button type="button" onclick="this.closest('tr').remove(); if(document.getElementById('fields-config-tbody').children.length===0) document.getElementById('fields-config-tbody').innerHTML='<tr id=\\'fields-empty-row\\'><td colspan=\\'3\\' class=\\'text-center py-4 text-slate-400 text-xs\\'>No fields configured — click \\'Add Row\\' to begin.</td></tr>';"
+          class="text-red-400 hover:text-red-600 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function addFieldRow() {
+  const tbody = document.getElementById('fields-config-tbody');
+  const emptyRow = document.getElementById('fields-empty-row');
+  if (emptyRow) emptyRow.remove();
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="px-3 py-2">
+      <input type="text" placeholder="field_name"
+        class="w-full px-2 py-1 text-xs border border-slate-200 rounded text-slate-700" />
+    </td>
+    <td class="px-3 py-2">
+      <select class="px-2 py-1 text-xs border border-slate-200 rounded text-slate-700 bg-white">
+        <option value="visible" selected>Visible</option>
+        <option value="hidden">Hidden</option>
+      </select>
+    </td>
+    <td class="px-3 py-2 text-center">
+      <button type="button" onclick="this.closest('tr').remove(); if(document.getElementById('fields-config-tbody').children.length===0) document.getElementById('fields-config-tbody').innerHTML='<tr id=\\'fields-empty-row\\'><td colspan=\\'3\\' class=\\'text-center py-4 text-slate-400 text-xs\\'>No fields configured — click \\'Add Row\\' to begin.</td></tr>';"
+        class="text-red-400 hover:text-red-600 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+}
+
+async function saveCampaign(e) {
+  e.preventDefault();
+  const name = document.getElementById('c-name').value.trim();
+  const slug = document.getElementById('c-slug').value.trim();
+  if (!name || !slug) { showToast('Name and slug are required', 'error'); return; }
+
+  const payload = {
+    name,
+    slug,
+    page_url: document.getElementById('c-url').value.trim() || '',
+    description: document.getElementById('c-description').value.trim() || '',
+    google_sheets_id: document.getElementById('c-sheets-id').value.trim() || '',
+    is_active: _campaignIsActive,
+  };
+
+  // Collect fields config
+  const fieldRows = document.querySelectorAll('#fields-config-tbody tr:not(#fields-empty-row)');
+  const fields = [];
+  fieldRows.forEach(tr => {
+    const inputs = tr.querySelectorAll('input, select');
+    if (inputs.length >= 2) {
+      fields.push({ field: inputs[0].value.trim(), visibility: inputs[1].value });
+    }
+  });
+  if (fields.length > 0) payload.fields_config = fields;
+
+  const method = _editingCampaignId ? 'PATCH' : 'POST';
+  const url = _editingCampaignId ? `/api/campaigns/${_editingCampaignId}/` : '/api/campaigns/';
+  const data = await apiCall(url, { method, body: JSON.stringify(payload) });
+  if (data) {
+    closeCampaignModal();
+    showToast(_editingCampaignId ? 'Campaign updated' : 'Campaign created');
+    loadCampaigns();
+  }
+}
+
+function copyApiKey() {
+  const key = document.getElementById('c-apikey').value;
+  if (key && key !== '—') {
+    navigator.clipboard.writeText(key).then(() => showToast('API key copied'));
+  }
+}
+
+/* ===================================================================
+   INIT — on page load check for existing token (stored in session)
+   =================================================================== */
+// No auto-login — user must sign in each session.
+</script>
+
+</body>
+</html>]]>
