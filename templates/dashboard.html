@@ -1,4 +1,4 @@
-<![CDATA[<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -557,6 +557,8 @@
 
 
 
+
+
 <!-- ================================================================
      CAMPAIGN MODAL
      ================================================================ -->
@@ -962,7 +964,8 @@ async function handleHashChange() {
     const lead = await apiCall(`/api/leads/${leadId}/`);
     if (lead) {
       _currentLead = lead;
-      loadLeadDetailPage(lead);
+      _panelOriginalNotes = lead.notes || '';
+      renderLeadDetailPage(lead);
     } else {
       document.getElementById('page-lead-detail').innerHTML = `
         <div class="lead-card text-center py-12">
@@ -995,593 +998,951 @@ async function loadDashboard() {
   let stats = null, recent = null;
 
   try { stats = await apiCall('/api/dashboard/stats/'); } catch(e) { statsError = true; }
-  try { recent = await apiCall('/api/leads/?page=1&page_size=5&ordering=-submitted_at'); } catch(e) { recentError = true; }
+  try { recent = await apiCall('/api/leads/?page=1'); } catch(e) { recentError = true; }
 
-  if (statsError && recentError) {
-    document.getElementById('stat-cards').innerHTML = '<div class="col-span-4 text-center py-8 text-slate-400">Unable to load dashboard data. Check your connection.</div>';
-    return;
+  if (statsError) {
+    document.getElementById('stat-cards').innerHTML = '<div class="col-span-4 dashboard-card text-center text-slate-500">Failed to load stats.</div>';
+    document.getElementById('campaigns-card').innerHTML = '<div class="text-center text-slate-500 py-10">Failed to load campaigns.</div>';
+    document.getElementById('quick-stats-card').innerHTML = '<div class="text-center text-slate-500">Failed to load quick stats.</div>';
+  } else if (stats) {
+    renderStatCards(stats);
+    renderCampaignChart(stats.per_campaign || [], stats.total || 0);
+    renderQuickStats(stats);
   }
-  if (stats) renderStatCards(stats);
-  if (stats) renderCampaignsSection(stats);
-  if (stats) renderStatusChart(stats);
-  if (recent) renderRecentLeads(recent);
-  if (stats) renderQuickStats(stats);
+
+  if (recentError) {
+    document.getElementById('recent-leads-card').innerHTML = '<div class="text-center text-slate-500 py-10">Failed to load recent leads.</div>';
+    document.getElementById('status-card').innerHTML = '<div class="text-center text-slate-500 py-10">Failed to load status breakdown.</div>';
+  } else if (recent) {
+    const leads = (recent.results || []);
+    renderRecentLeads(leads.slice(0, 5));
+    renderStatusChart(leads);
+  }
 }
 
 function renderSkeletons() {
-  ['stat-cards','campaigns-card','status-card','recent-leads-card','quick-stats-card'].forEach(id => {
-    document.getElementById(id).innerHTML = `<div class="skeleton" style="height:${id==='stat-cards'?90:200}px;"></div>`;
-  });
-  // For stat-cards, make four skeleton boxes
-  document.getElementById('stat-cards').innerHTML =
-    `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[24px]">` +
-    `<div class="skeleton" style="height:100px;"></div>`.repeat(4) + `</div>`;
+  document.getElementById('stat-cards').innerHTML = Array(4).fill().map(() => `
+    <div class="dashboard-card">
+      <div class="flex items-center justify-between mb-4">
+        <div class="skeleton h-4 w-20"></div>
+        <div class="skeleton w-10 h-10 rounded-full"></div>
+      </div>
+      <div class="skeleton h-10 w-16 mb-3"></div>
+      <div class="skeleton h-3 w-24"></div>
+    </div>
+  `).join('');
+
+  document.getElementById('campaigns-card').innerHTML = `
+    <div class="flex items-center justify-between" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+      <h2 class="text-base font-bold text-slate-800">Leads by Campaign</h2>
+    </div>
+    <div class="space-y-4">${Array(4).fill().map(()=>'<div class="skeleton h-10 w-full"></div>').join('')}</div>
+  `;
+
+  document.getElementById('status-card').innerHTML = `
+    <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;">
+      <h2 class="text-base font-bold text-slate-800">Lead Status</h2>
+    </div>
+    <div class="flex justify-center mb-6"><div class="skeleton w-40 h-40 rounded-full"></div></div>
+  `;
+
+  document.getElementById('recent-leads-card').innerHTML = `
+    <div class="px-6 py-4 border-b border-slate-100 flex justify-between"><h2 class="text-base font-bold text-slate-800">Recent Leads</h2></div>
+    <div class="p-6 space-y-4">${Array(5).fill().map(()=>'<div class="skeleton h-4 w-full"></div>').join('')}</div>
+  `;
+
+  document.getElementById('quick-stats-card').innerHTML = `
+    <div class="flex justify-between px-6">${Array(4).fill().map(()=>'<div class="skeleton h-10 w-24"></div>').join('')}</div>
+  `;
 }
 
-function renderStatCards(stats) {
-  const c = [
-    { label:'Total Leads',        value:stats.total_leads,        icon:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', color:'#3b82f6' },
-    { label:'New This Week',     value:stats.this_week_count,    icon:'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', color:'#8b5cf6' },
-    { label:'Active Campaigns',  value:stats.active_campaigns,   icon:'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z', color:'#10b981' },
-    { label:'Form Locations (Unique)', value:stats.unique_locations, icon:'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z', color:'#f59e0b' },
+function renderStatCards(s) {
+  const tot = s.total || 0;
+  const newPct = tot ? ((s.new / tot) * 100).toFixed(1) + '% of total' : '0% of total';
+  const weekPct = tot ? ((s.this_week / tot) * 100).toFixed(1) + '% of total' : '0% of total';
+
+  const items = [
+    { label:'Total Leads', val:s.total, trend:'All time', accent:'#4f46e5', svg:'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
+    { label:'New Leads', val:s.new, trend:newPct, accent:'#2563eb', svg:'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z' },
+    { label:'Today', val:s.today, trend:'Updated just now', accent:'#059669', svg:'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { label:'This Week', val:s.this_week, trend:weekPct, accent:'#d97706', svg:'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' }
   ];
-  document.getElementById('stat-cards').innerHTML = c.map(s => `
-    <div class="dashboard-card stat-card cursor-default" style="--accent:${s.color};">
-      <div class="flex items-center gap-3">
-        <div class="stat-circle w-[42px] h-[42px] rounded-xl flex items-center justify-center flex-shrink-0">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${s.icon}"/>
-          </svg>
-        </div>
-        <div style="flex:1; min-width:0;">
-          <div class="text-2xl font-bold text-slate-800">${s.value}</div>
-          <div class="text-xs text-slate-500 font-medium mt-0.5">${s.label}</div>
+
+  document.getElementById('stat-cards').innerHTML = items.map(it => `
+    <div class="dashboard-card stat-card" style="--accent: ${it.accent};">
+      <div class="flex items-start justify-between mb-2">
+        <div class="text-sm font-semibold text-slate-500">${it.label}</div>
+        <div class="w-10 h-10 rounded-full flex items-center justify-center stat-circle">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${it.svg}"/></svg>
         </div>
       </div>
+      <div class="text-[2.5rem] font-bold text-slate-800 leading-none mb-3">${it.val.toLocaleString()}</div>
+      <div class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">${it.trend}</div>
     </div>
   `).join('');
 }
 
-function renderCampaignsSection(stats) {
-  const campaigns = stats.campaign_leads || [];
-  const max = Math.max(...campaigns.map(c => c.count), 1);
+function renderCampaignChart(rows, total) {
   const el = document.getElementById('campaigns-card');
-  el.innerHTML = `
-    <h2 class="text-base font-semibold text-slate-800 mb-4">Campaigns</h2>
-    <div class="campaigns-scroll-wrapper flex-1" style="min-height:0;">
-      <div class="campaigns-scroll-area" style="padding-right:4px;">
-        ${campaigns.length === 0
-          ? '<div class="text-center py-8 text-slate-400 text-sm">No campaigns with leads yet</div>'
-          : campaigns.map(c => `
-            <div class="flex items-center gap-3 mb-3">
-              <div class="flex-1">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="text-sm font-medium text-slate-700 truncate">${escHtml(c.name)}</span>
-                  <span class="text-xs font-semibold text-slate-500 flex-shrink-0 ml-2">${c.count}</span>
-                </div>
-                <div style="height:10px; background:#f1f5f9; border-radius:5px; overflow:hidden;">
-                  <div class="bar-fill" style="width:${Math.max(3, (c.count / max) * 100)}%;"></div>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+  const palette = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
+  let html = '<div class="flex items-center justify-between" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;"><h2 class="text-base font-bold text-slate-800">Leads by Campaign</h2><span class="badge" style="background:#f1f5f9; color:#475569;">' + rows.length + ' Total</span></div>';
+  
+  if (!rows.length) {
+    el.innerHTML = html + '<div class="flex flex-col items-center justify-center py-10 text-slate-400"><svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg><p class="text-sm">No campaigns yet</p></div>';
+    return;
+  }
+  
+  const max = Math.max(...rows.map(r => r.count), 1);
+  const bars = rows.map((r, i) => {
+    const color = palette[i % palette.length];
+    // The visual track is 92% of the card width. 
+    // The fill is relative to the max count (which represents 100% of the track).
+    const targetW = (r.count / max * 100).toFixed(1) + '%';
+    const totalPct = total ? (r.count / total * 100) : 0;
+    const totalPctStr = totalPct % 1 === 0 ? totalPct + '%' : totalPct.toFixed(1) + '%';
+    return `
+      <div class="mb-5 last:mb-0">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-sm font-medium text-slate-700 truncate pr-4">${escHtml(r.campaign)}</span>
+          <span class="text-sm font-bold text-slate-900">${r.count.toLocaleString()}</span>
+        </div>
+        <div class="rounded-full overflow-hidden mb-1" style="height:10px; background:#f1f5f9; width: 92%;">
+          <div class="bar-fill h-full rounded-full" style="background:${color}; width:0%;" data-w="${targetW}"></div>
+        </div>
+        <div class="text-[11px] font-medium text-slate-400">${totalPctStr} of total</div>
       </div>
-    </div>
-  `;
+    `;
+  }).join('');
+  el.innerHTML = html + '<div class="campaigns-scroll-wrapper"><div class="campaigns-scroll-area pr-2">' + bars + '</div></div>';
+  setTimeout(() => el.querySelectorAll('.bar-fill').forEach(b => b.style.width = b.getAttribute('data-w')), 50);
 }
 
-function renderStatusChart(stats) {
-  const statuses = ['new','reviewed','contacted','quoted','closed','spam'];
-  const labels   = ['New','Reviewed','Contacted','Quoted','Closed','Spam'];
-  const counts   = statuses.map(s => stats[`${s}_count`] || 0);
-  const total    = counts.reduce((a,b)=>a+b, 1);
-  const colors   = ['#3b82f6','#eab308','#8b5cf6','#f97316','#22c55e','#ef4444'];
-  const donutId  = 'donut-svg';
-  const cx=50, cy=50, r=30, circ=2*Math.PI*r;
-  let cumulative=0;
-  const segments = counts.map((v,i)=>{
-    const pct = v/total;
-    const offset = cumulative;
-    const len = pct*circ;
-    cumulative += len;
-    return {color:colors[i], offset, len, label:labels[i], count:v, pct:(pct*100).toFixed(1)};
-  });
+function renderStatusChart(leads) {
   const el = document.getElementById('status-card');
-  el.innerHTML = `
-    <h2 class="text-base font-semibold text-slate-800 mb-2">Lead Status</h2>
-    <div style="display:flex; flex-direction:column; align-items:center;">
-      <svg id="${donutId}" width="140" height="140" viewBox="0 0 100 100">
-        ${segments.map((s,i)=>`
-          <circle class="donut-segment" cx="${cx}" cy="${cy}" r="${r}" fill="none"
-            stroke="${s.color}" stroke-width="10"
-            stroke-dasharray="${s.len} ${circ - s.len}"
-            stroke-dashoffset="${-s.offset}"
-            opacity="0" />
-        `).join('')}
-        <text x="50" y="52" text-anchor="middle" font-size="16" font-weight="bold" fill="#0f172a">${total-1}</text>
-        <text x="50" y="64" text-anchor="middle" font-size="8" fill="#94a3b8">Total</text>
+  const counts = { 'new':0, 'reviewed':0, 'contacted':0, 'quoted':0, 'closed':0, 'spam':0 };
+  let hasData = false;
+  leads.forEach(l => { if(counts[l.status] !== undefined) { counts[l.status]++; hasData = true; } });
+  
+  let html = '<div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px;"><h2 class="text-base font-bold text-slate-800">Lead Status</h2></div>';
+  if (!hasData) {
+    el.innerHTML = html + '<div class="text-center text-slate-400 py-10 text-sm">No data</div>';
+    return;
+  }
+
+  const total = leads.length;
+  const colors = { 'new':'#2563eb', 'reviewed':'#ca8a04', 'contacted':'#7c3aed', 'quoted':'#ea580c', 'closed':'#16a34a', 'spam':'#dc2626' };
+  const rad = 60, circ = 2 * Math.PI * rad;
+  let offset = 0;
+
+  const segs = Object.entries(counts).map(([st, c]) => {
+    if(!c) return '';
+    const frac = c / total;
+    const dash = `${frac * circ} ${circ}`;
+    const off = -offset;
+    offset += frac * circ;
+    return `<circle class="donut-segment" cx="80" cy="80" r="${rad}" fill="transparent" stroke="${colors[st]}" stroke-width="18" stroke-dasharray="0 ${circ}" data-dash="${dash}" stroke-dashoffset="${off}" data-status="${st}"></circle>`;
+  }).join('');
+
+  el.innerHTML = html + `
+    <div class="relative w-40 h-40 mx-auto mb-8">
+      <svg width="160" height="160" viewBox="0 0 160 160">
+        <circle cx="80" cy="80" r="60" fill="transparent" stroke="#f1f5f9" stroke-width="18"></circle>
+        ${segs}
       </svg>
-      <div style="width:100%; margin-top:12px;">
-        ${segments.filter(s=>s.count>0).map(s=>`
-          <div class="flex items-center justify-between py-1">
-            <div class="flex items-center gap-2">
-              <span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block;"></span>
-              <span class="text-xs font-medium text-slate-600">${s.label}</span>
-            </div>
-            <span class="text-xs font-semibold text-slate-500">${s.count} (${s.pct}%)</span>
-          </div>
-        `).join('')}
-        ${segments.filter(s=>s.count>0).length===0 ? '<div class="text-center py-2 text-slate-400 text-xs">No leads</div>' : ''}
+      <div class="absolute inset-0 flex flex-col items-center justify-center">
+        <span class="text-2xl font-bold text-slate-800">${total}</span>
+        <span class="uppercase tracking-wider" style="font-size: 11px; font-weight: 500; color: #64748b;">Leads</span>
       </div>
     </div>
-  `;
-  // Animate segments
-  requestAnimationFrame(()=>{
-    document.querySelectorAll('.donut-segment').forEach(el=>el.style.opacity='1');
-  });
-}
-
-function renderRecentLeads(data) {
-  const leads = data.results || [];
-  const el = document.getElementById('recent-leads-card');
-  el.innerHTML = `
-    <div style="padding:20px 24px; border-bottom:1px solid #f1f5f9;">
-      <h2 class="text-base font-semibold text-slate-800">Recent Leads</h2>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr style="background:#f8fafc;">
-            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Name</th>
-            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Company</th>
-            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Campaign</th>
-            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Status</th>
-            <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${leads.length === 0
-            ? '<tr><td colspan="5" class="text-center py-8 text-slate-400">No recent leads</td></tr>'
-            : leads.map(l => `
-              <tr class="data-row" onclick="window.location.hash='#lead-${l.id}'">
-                <td class="px-4 py-3 font-medium text-slate-700">${escHtml(l.name)}</td>
-                <td class="px-4 py-3 text-slate-600">${escHtml(l.company || '—')}</td>
-                <td class="px-4 py-3 text-slate-600">${escHtml(l.campaign_name || '—')}</td>
-                <td class="px-4 py-3">${statusBadge(l.status)}</td>
-                <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatDate(l.submitted_at)}</td>
-              </tr>
-            `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderQuickStats(stats) {
-  const el = document.getElementById('quick-stats-card');
-  const items = [
-    { label:'Avg. Leads / Day (30d)', value:stats.avg_leads_per_day_30d?.toFixed(1) || '0' },
-    { label:'Conversion Rate (Quoted / Total)', value:stats.conversion_rate_quoted != null ? (stats.conversion_rate_quoted * 100).toFixed(1) + '%' : '0%' },
-  ];
-  el.innerHTML = `
-    <div class="grid grid-cols-2 divide-x divide-slate-100">
-      ${items.map(i => `
-        <div class="text-center px-4 py-2">
-          <div class="text-lg font-bold text-slate-800">${i.value}</div>
-          <div class="text-xs text-slate-500 mt-0.5">${i.label}</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px;" class="mt-auto">
+      ${Object.entries(counts).filter(([_,c])=>c>0).map(([s, c]) => `
+        <div class="flex items-center justify-between text-sm w-full status-legend-item" style="cursor: pointer;" data-status="${s}">
+          <div class="flex items-center min-w-0 mr-2">
+            <span class="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0" style="background:${colors[s]}"></span>
+            <span class="text-slate-600 capitalize truncate">${s}</span>
+          </div>
+          <span class="font-bold text-slate-800 flex-shrink-0">${c}</span>
         </div>
       `).join('')}
     </div>
   `;
+  setTimeout(() => {
+    el.querySelectorAll('.donut-segment').forEach(s => s.setAttribute('stroke-dasharray', s.getAttribute('data-dash')));
+    
+    // Add hover listeners
+    const legendItems = el.querySelectorAll('.status-legend-item');
+    const segments = el.querySelectorAll('.donut-segment');
+    
+    legendItems.forEach(item => {
+      const status = item.getAttribute('data-status');
+      item.addEventListener('mouseenter', () => {
+        segments.forEach(seg => {
+          if (seg.getAttribute('data-status') === status) {
+            seg.style.opacity = '1';
+          } else {
+            seg.style.opacity = '0.4';
+          }
+        });
+      });
+      item.addEventListener('mouseleave', () => {
+        segments.forEach(seg => {
+          seg.style.opacity = '1';
+        });
+      });
+    });
+  }, 50);
+}
+
+function renderRecentLeads(leads) {
+  const el = document.getElementById('recent-leads-card');
+  let html = `
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <h2 class="text-base font-bold text-slate-800">Recent Leads</h2>
+      <button onclick="navigate('leads')" class="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">View All &rarr;</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left">
+        <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+          <tr>
+            <th class="px-6 py-3 border-b border-slate-200 w-10">#</th>
+            <th class="px-6 py-3 border-b border-slate-200">Name</th>
+            <th class="px-6 py-3 border-b border-slate-200">Company</th>
+            <th class="px-6 py-3 border-b border-slate-200">Email</th>
+            <th class="px-6 py-3 border-b border-slate-200">Campaign</th>
+            <th class="px-6 py-3 border-b border-slate-200">Status</th>
+            <th class="px-6 py-3 border-b border-slate-200">Submitted At</th>
+            <th class="px-6 py-3 border-b border-slate-200"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+  `;
+  if (!leads.length) {
+    html += `<tr><td colspan="8" class="text-center" style="padding: 32px 0;">
+      <div class="flex flex-col items-center justify-center text-slate-400">
+        <svg class="w-8 h-8 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        <span class="text-sm">No leads yet</span>
+      </div>
+    </td></tr>`;
+  } else {
+    const cpColors = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0891b2'];
+    html += leads.map((l, i) => {
+      let hash = 0;
+      if (l.campaign_name) for(let j=0; j<l.campaign_name.length; j++) hash += l.campaign_name.charCodeAt(j);
+      const bg = cpColors[hash % cpColors.length];
+      return `
+        <tr class="hover:bg-slate-50 transition-colors cursor-pointer group" onclick="window.location.hash='#lead-${l.id}'">
+          <td class="px-6 py-3.5 text-slate-400 font-medium">${i + 1}</td>
+          <td class="px-6 py-3.5 text-slate-800 font-bold">${escHtml(l.full_name)}</td>
+          <td class="px-6 py-3.5 text-slate-500">${escHtml(l.company||'—')}</td>
+          <td class="px-6 py-3.5 text-slate-600">${escHtml(l.email)}</td>
+          <td class="px-6 py-3.5">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold text-white" style="background:${bg}">
+              ${escHtml(l.campaign_name||'—')}
+            </span>
+          </td>
+          <td class="px-6 py-3.5"><span class="badge badge-${l.status}">${l.status}</span></td>
+          <td class="px-6 py-3.5 text-slate-500 text-xs whitespace-nowrap">${timeAgo(l.submitted_at)}</td>
+          <td class="px-6 py-3.5 text-right">
+            <button onclick="event.stopPropagation();window.location.hash='#lead-${l.id}'" class="text-blue-600 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 px-3 py-1.5 rounded-md hover:bg-blue-100">View</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+  el.innerHTML = html + '</tbody></table></div>';
+}
+
+function renderQuickStats(s) {
+  const tot = s.total || 1;
+  const list = [
+    { label: 'New Rate', val: ((s.new/tot)*100).toFixed(1)+'%', pct: (s.new/tot)*100, color: '#2563eb' },
+    { label: 'Today vs Total', val: s.today+' / '+tot, pct: (s.today/tot)*100, color: '#059669' },
+    { label: 'Week vs Total', val: s.this_week+' / '+tot, pct: (s.this_week/tot)*100, color: '#d97706' },
+    { label: 'Active Campaigns', val: (s.per_campaign||[]).length, pct: 100, color: '#7c3aed' },
+  ];
+  document.getElementById('quick-stats-card').innerHTML = '<div class="grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-slate-100">' + list.map(st => `
+    <div class="px-6 py-2">
+      <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">${st.label}</div>
+      <div class="text-xl font-bold text-slate-800 mb-2">${st.val}</div>
+      <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+        <div class="h-full rounded-full" style="width:${st.pct}%; background:${st.color}"></div>
+      </div>
+    </div>
+  `).join('') + '</div>';
 }
 
 /* ===================================================================
-   LEADS LIST
+   LEADS PAGE
    =================================================================== */
-let _debounceTimer = null;
-
-function debounceFilter() {
-  clearTimeout(_debounceTimer);
-  _debounceTimer = setTimeout(applyFilters, 300);
-}
-
-function escHtml(s) {
-  if (typeof s !== 'string' && typeof s !== 'number') return s ?? '—';
-  s = String(s);
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-function statusBadge(status) {
-  const cls = 'badge badge-' + (status || 'new');
-  return `<span class="${cls}">${escHtml(status || 'new')}</span>`;
-}
-
-function formatDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-  } catch { return iso; }
-}
-
-function formatDateShort(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric' });
-  } catch { return iso; }
+function resetFilterDropdowns() {
+  // Rebuild campaign dropdown from cached list
+  const sel = document.getElementById('filter-campaign');
+  while (sel.options.length > 1) sel.remove(1);
+  _campaigns.forEach(c => sel.add(new Option(c.name, c.id)));
 }
 
 async function loadLeads() {
-  const tbody = document.getElementById('leads-tbody');
-  tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12"><div class="spinner" style="margin:0 auto;"></div></td></tr>';
-
-  const params = new URLSearchParams();
-  if (_leadsPage) params.set('page', _leadsPage);
-  params.set('page_size', '20');
-  params.set('ordering', '-submitted_at');
-
-  const search = document.getElementById('filter-search').value.trim();
-  if (search) params.set('search', search);
-  const campaign = document.getElementById('filter-campaign').value;
-  if (campaign) params.set('campaign', campaign);
-  const status = document.getElementById('filter-status').value;
-  if (status) params.set('status', status);
-  const industry = document.getElementById('filter-industry').value;
-  if (industry) params.set('industry', industry);
-  const location = document.getElementById('filter-form-location').value;
-  if (location) params.set('form_location', location);
-  const dateFrom = document.getElementById('filter-date-from').value;
-  if (dateFrom) params.set('date_from', dateFrom);
-  const dateTo = document.getElementById('filter-date-to').value;
-  if (dateTo) params.set('date_to', dateTo);
-
-  const data = await apiCall(`/api/leads/?${params.toString()}`);
-  if (!data) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12 text-slate-400">Failed to load leads</td></tr>'; return; }
+  const params = buildLeadsParams();
+  const data   = await apiCall('/api/leads/?' + params.toString());
+  if (!data) return;
 
   _leadsCount = data.count || 0;
-  document.getElementById('leads-count-text').textContent = `${_leadsCount} leads`;
+  document.getElementById('leads-count-text').textContent =
+    `${_leadsCount.toLocaleString()} lead${_leadsCount !== 1 ? 's' : ''} found`;
 
-  tbody.innerHTML = (data.results || []).map(l => `
-    <tr class="data-row" onclick="window.location.hash='#lead-${l.id}'">
-      <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${formatDate(l.submitted_at)}</td>
-      <td class="px-4 py-3 font-medium text-slate-700">${escHtml(l.name)}</td>
-      <td class="px-4 py-3 text-slate-600">${escHtml(l.company || '—')}</td>
-      <td class="px-4 py-3 text-slate-600 max-w-[200px] truncate" title="${escHtml(l.email)}">${escHtml(l.email)}</td>
-      <td class="px-4 py-3 text-slate-600">${escHtml(l.campaign_name || '—')}</td>
-      <td class="px-4 py-3 text-slate-600">${escHtml(l.industry || '—')}</td>
-      <td class="px-4 py-3">${statusBadge(l.status)}</td>
-      <td class="px-4 py-3 text-slate-600">${escHtml(l.form_location || '—')}</td>
-      <td class="px-4 py-3 text-center">${l.is_duplicate ? '<span class="text-red-500 font-bold" title="Flagged as duplicate">⚠</span>' : ''}</td>
-      <td class="px-4 py-3 text-center">${l.sheets_synced ? '<span class="text-green-500 font-bold" title="Synced to Sheets">✓</span>' : ''}</td>
+  renderLeadsTable(data.results || []);
+  renderPagination(data);
+  populateLeadFilters(data.results || []);
+}
+
+function buildLeadsParams() {
+  const p = new URLSearchParams({ page: _leadsPage });
+  const get = id => document.getElementById(id)?.value?.trim() || '';
+  if (get('filter-search'))        p.set('search',        get('filter-search'));
+  if (get('filter-campaign'))      p.set('campaign',      get('filter-campaign'));
+  if (get('filter-status'))        p.set('status',        get('filter-status'));
+  if (get('filter-industry'))      p.set('industry',      get('filter-industry'));
+  if (get('filter-form-location')) p.set('form_location', get('filter-form-location'));
+  if (get('filter-date-from'))     p.set('date_from',     get('filter-date-from'));
+  if (get('filter-date-to'))       p.set('date_to',       get('filter-date-to'));
+  return p;
+}
+
+function renderLeadsTable(leads) {
+  const tbody = document.getElementById('leads-tbody');
+  if (!leads.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="11" class="text-center py-14">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+          <div style="width:48px; height:48px; background:#f1f5f9; border-radius:50%;
+                      display:flex; align-items:center; justify-content:center; font-size:22px;">📭</div>
+          <p class="text-slate-500 text-sm font-medium">No leads match your filters</p>
+          <button onclick="clearFilters()" class="text-xs text-blue-600 hover:text-blue-700">Clear filters</button>
+        </div>
+      </td></tr>
+    `;
+    return;
+  }
+  const flag = v => v
+    ? '<span style="color:#16a34a; font-size:15px;">✓</span>'
+    : '<span style="color:#cbd5e1;">—</span>';
+
+  tbody.innerHTML = leads.map(l => `
+    <tr class="data-row" style="border-bottom:1px solid #f8fafc;" onclick="window.location.hash='#lead-${l.id}'">
+      <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">${fmtDate(l.submitted_at)}</td>
+      <td class="px-4 py-3 font-medium text-slate-800 text-sm">${escHtml(l.full_name)}</td>
+      <td class="px-4 py-3 text-slate-600 text-sm">${escHtml(l.company||'—')}</td>
+      <td class="px-4 py-3 text-slate-600 text-sm">${escHtml(l.email)}</td>
+      <td class="px-4 py-3 text-slate-600 text-xs">${escHtml(l.campaign_name||'—')}</td>
+      <td class="px-4 py-3 text-slate-600 text-xs">${escHtml(l.industry||'—')}</td>
+      <td class="px-4 py-3"><span class="badge badge-${l.status}">${l.status}</span></td>
+      <td class="px-4 py-3 text-slate-500 text-xs">${escHtml(l.form_location||'—')}</td>
+      <td class="px-3 py-3 text-center">${l.is_duplicate ? '<span class="badge badge-dup" style="font-size:10px;">DUP</span>' : '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td class="px-3 py-3 text-center">${flag(l.sheets_synced)}</td>
     </tr>
   `).join('');
-
-  if ((data.results || []).length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-12 text-slate-400">No leads match your filters</td></tr>';
-  }
-
-  renderPagination(data);
 }
 
 function renderPagination(data) {
   const el = document.getElementById('leads-pagination');
-  const total = data.count || 0;
-  const page = _leadsPage;
-  const pageSize = 20;
-  const totalPages = Math.ceil(total / pageSize) || 1;
+  const size = 25;
+  const totalPages = Math.ceil(data.count / size);
+  
+  if (data.count === 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const start = (_leadsPage - 1) * size + 1;
+  const end = Math.min(_leadsPage * size, data.count);
+
+  let pagesHtml = '';
+  const maxButtons = 5;
+  let startPage = Math.max(1, _leadsPage - 2);
+  let endPage = Math.min(totalPages, _leadsPage + 2);
+  
+  if (endPage - startPage + 1 < maxButtons) {
+    if (startPage === 1) endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    else {
+      endPage = totalPages;
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+  }
+  
+  if (startPage > 1) {
+    pagesHtml += `<button onclick="changePage(1)" class="px-3 py-1 text-sm font-medium border border-slate-200 rounded text-slate-800 bg-white hover:bg-slate-50">1</button>`;
+    if (startPage > 2) pagesHtml += `<span class="px-1 text-slate-400">...</span>`;
+  }
+  
+  for (let i = startPage; i <= endPage; i++) {
+    if (i === _leadsPage) {
+      pagesHtml += `<button class="px-3 py-1 text-sm font-medium rounded text-white bg-blue-600 border border-blue-600">${i}</button>`;
+    } else {
+      pagesHtml += `<button onclick="changePage(${i})" class="px-3 py-1 text-sm font-medium border border-slate-200 rounded text-slate-800 bg-white hover:bg-slate-50">${i}</button>`;
+    }
+  }
+  
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) pagesHtml += `<span class="px-1 text-slate-400">...</span>`;
+    pagesHtml += `<button onclick="changePage(${totalPages})" class="px-3 py-1 text-sm font-medium border border-slate-200 rounded text-slate-800 bg-white hover:bg-slate-50">${totalPages}</button>`;
+  }
+
+  el.style.display = 'flex';
+  el.style.justifyContent = 'space-between';
+  el.style.alignItems = 'center';
+  el.style.padding = '16px 0';
 
   el.innerHTML = `
-    <span class="text-sm text-slate-500">Page ${page} of ${totalPages} (${total} total)</span>
-    <div class="flex gap-2">
-      <button onclick="goToPage(${page - 1})" ${page <= 1 ? 'disabled' : ''}
-        class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
-               ${page <= 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 btn-ghost cursor-pointer'}">
-        ← Prev
+    <div class="text-sm text-slate-600 font-medium ml-4">Showing ${start}-${end} of ${data.count} leads</div>
+    <div style="display:flex; gap:6px; align-items:center;" class="mr-4">
+      <button onclick="changePage(${_leadsPage-1})" ${!data.previous?'disabled':''} 
+        class="px-3 py-1.5 text-sm font-medium border border-slate-200 rounded text-slate-800 bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50">
+        ← Previous
       </button>
-      <button onclick="goToPage(${page + 1})" ${page >= totalPages ? 'disabled' : ''}
-        class="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
-               ${page >= totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 btn-ghost cursor-pointer'}">
+      ${pagesHtml}
+      <button onclick="changePage(${_leadsPage+1})" ${!data.next?'disabled':''}
+        class="px-3 py-1.5 text-sm font-medium border border-slate-200 rounded text-slate-800 bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50">
         Next →
       </button>
     </div>
   `;
 }
 
-function goToPage(p) {
-  _leadsPage = p;
+function changePage(page) {
+  _leadsPage = page;
   loadLeads();
+  document.getElementById('main-content').scrollTop = 0;
 }
 
-function applyFilters() {
-  _leadsPage = 1;
-  loadLeads();
+function populateLeadFilters(leads) {
+  // Industry
+  const indSel = document.getElementById('filter-industry');
+  if (indSel.options.length <= 1) {
+    const vals = [...new Set(leads.map(l => l.industry).filter(Boolean))].sort();
+    vals.forEach(v => indSel.add(new Option(v, v)));
+  }
+  // Form location
+  const locSel = document.getElementById('filter-form-location');
+  if (locSel.options.length <= 1) {
+    const vals = [...new Set(leads.map(l => l.form_location).filter(Boolean))].sort();
+    vals.forEach(v => locSel.add(new Option(v, v)));
+  }
+}
+
+function applyFilters() { _leadsPage = 1; loadLeads(); }
+
+function debounceFilter() {
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(applyFilters, 380);
 }
 
 function clearFilters() {
-  document.getElementById('filter-search').value = '';
-  document.getElementById('filter-campaign').value = '';
-  document.getElementById('filter-status').value = '';
-  document.getElementById('filter-industry').value = '';
-  document.getElementById('filter-form-location').value = '';
-  document.getElementById('filter-date-from').value = '';
-  document.getElementById('filter-date-to').value = '';
+  ['filter-search','filter-campaign','filter-status','filter-industry',
+   'filter-form-location','filter-date-from','filter-date-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
   applyFilters();
 }
 
-async function resetFilterDropdowns() {
-  // Populate campaign and industry filter dropdowns from the leads data
-  const campaignSel = document.getElementById('filter-campaign');
-  const industrySel = document.getElementById('filter-industry');
-  const locationSel = document.getElementById('filter-form-location');
-  // Only populate once
-  if (campaignSel.options.length > 1) return;
-  
-  const data = await apiCall('/api/leads/?page=1&page_size=1');
-  if (!data || data.filters === undefined) return;
-  
-  const filters = data.filters || {};
-  
-  if (filters.campaigns) {
-    campaignSel.innerHTML = '<option value="">All Campaigns</option>' + 
-      filters.campaigns.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-  }
-  if (filters.industries) {
-    industrySel.innerHTML = '<option value="">All Industries</option>' + 
-      filters.industries.map(i => `<option value="${escHtml(i)}">${escHtml(i)}</option>`).join('');
-  }
-  if (filters.locations) {
-    locationSel.innerHTML = '<option value="">All Locations</option>' + 
-      filters.locations.map(l => `<option value="${escHtml(l)}">${escHtml(l)}</option>`).join('');
+/* ===================================================================
+   CSV EXPORT
+   =================================================================== */
+async function exportCSV() {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true; btn.textContent = 'Exporting…';
+
+  try {
+    // Fetch all pages of current filter
+    const all = [];
+    let page = 1, hasMore = true;
+    while (hasMore && page <= 200) {
+      const p = buildLeadsParams(); p.set('page', page);
+      const data = await apiCall('/api/leads/?' + p.toString());
+      if (!data) break;
+      all.push(...(data.results || []));
+      hasMore = !!data.next;
+      page++;
+    }
+
+    if (!all.length) { showToast('No leads to export', 'info'); return; }
+
+    const headers = [
+      'Submitted At','Campaign','Name','Company','Email','Phone',
+      'Country','Industry','Requirement Type','Message',
+      'Form Location','Status','Duplicate','Notes',
+    ];
+    const rows = all.map(l => [
+      fmtDateFull(l.submitted_at), l.campaign_name||'', l.full_name, l.company||'',
+      l.email, l.phone||'', l.country||'', l.industry||'', l.requirement_type||'',
+      l.message||'', l.form_location||'', l.status,
+      l.is_duplicate ? 'Yes' : 'No', l.notes||'',
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`));
+
+    const csv  = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `smec-leads-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+
+    showToast(`Exported ${all.length} leads`, 'success');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>Export CSV`;
   }
 }
 
 /* ===================================================================
-   LEAD DETAIL PAGE
+   LEAD DETAIL PANEL
    =================================================================== */
 let _panelOriginalNotes = '';
 
-function loadLeadDetailPage(lead) {
-  _panelOriginalNotes = lead.notes || '';
-  const container = document.getElementById('page-lead-detail');
-  const a = lead.attachments && lead.attachments.length > 0 ? lead.attachments : [];
-  
-  container.innerHTML = `
-    <div>
-      <!-- Back button -->
-      <button onclick="window.location.hash='#leads'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-        Back to Leads
-      </button>
+const _avatarColors = ['#4f46e5', '#059669', '#d97706', '#dc2626', '#0891b2', '#7c3aed'];
+const _statusColors = { 'new':'#2563eb', 'reviewed':'#ca8a04', 'contacted':'#7c3aed', 'quoted':'#ea580c', 'closed':'#16a34a', 'spam':'#dc2626' };
 
-      <div class="lead-detail-layout">
-        <!-- LEFT COLUMN -->
-        <div>
-          <div class="lead-header-card">
-            <div class="flex items-center justify-between mb-1">
-              <h1 class="text-lg font-bold text-slate-800">${escHtml(lead.name)}</h1>
-              ${statusDropdown(lead.status)}
-            </div>
-            <div class="mt-3 space-y-1.5 text-sm text-slate-600">
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Submitted</span>
-                <span>${formatDate(lead.submitted_at)}</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Campaign</span>
-                <span class="font-medium">${escHtml(lead.campaign_name || '—')}</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-slate-400">Form</span>
-                <span>${escHtml(lead.form_location || '—')}</span>
-              </div>
-            </div>
+function _nameHash(name) {
+  let h = 0;
+  for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function _getFileIcon(filename) {
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  const map = {
+    pdf: { icon: '📕', color: '#dc2626' },
+    dwg: { icon: '📐', color: '#2563eb' },
+    dxf: { icon: '📐', color: '#2563eb' },
+    doc: { icon: '📘', color: '#2563eb' },
+    docx: { icon: '📘', color: '#2563eb' },
+    xls: { icon: '📗', color: '#16a34a' },
+    xlsx: { icon: '📗', color: '#16a34a' },
+    zip: { icon: '🗜️', color: '#64748b' },
+    rar: { icon: '🗜️', color: '#64748b' },
+    png: { icon: '🖼️', color: '#7c3aed' },
+    jpg: { icon: '🖼️', color: '#7c3aed' },
+    jpeg: { icon: '🖼️', color: '#7c3aed' },
+    gif: { icon: '🖼️', color: '#7c3aed' },
+    svg: { icon: '🖼️', color: '#7c3aed' },
+  };
+  return map[ext] || { icon: '📄', color: '#64748b' };
+}
+
+function _truncate(str, max) {
+  if (!str) return '—';
+  return str.length > max ? str.slice(0, max) + '…' : str;
+}
+
+function _copyToClipboard(text, btnEl) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btnEl.innerHTML;
+    btnEl.innerHTML = '<span style="font-size:10px; color:#16a34a; font-weight:600;">Copied!</span>';
+    setTimeout(() => { btnEl.innerHTML = orig; }, 2000);
+  });
+}
+
+// Escape key listener (removed lead panel close)
+
+function renderLeadDetailPage(lead) {
+  const avatarColor = _avatarColors[_nameHash(lead.full_name) % _avatarColors.length];
+  const initials = (lead.full_name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const exactDate = fmtDate(lead.submitted_at);
+  const timeStr = timeAgo(lead.submitted_at);
+
+  const statuses = ['new', 'reviewed', 'contacted', 'quoted', 'closed', 'spam'];
+  const statusHtml = `
+    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; text-align: right;">UPDATE STATUS</div>
+      <div class="status-dropdown-container" tabindex="0" onblur="setTimeout(()=>document.getElementById('status-dropdown-menu')?.classList.add('hidden'), 150)">
+        <div class="status-dropdown-header" onclick="document.getElementById('status-dropdown-menu').classList.toggle('hidden')">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="status-dot" id="status-dropdown-dot" style="background:${_statusColors[lead.status] || '#94a3b8'}"></span>
+            <span id="status-dropdown-label">${lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}</span>
           </div>
-          
-          <div class="space-y-4">
-            <!-- Contact Info -->
-            <div class="lead-card">
-              <div class="section-label">Contact Information</div>
-              <div class="space-y-3">
-                <div>
-                  <div class="field-label">Email</div>
-                  <div class="field-value">${escHtml(lead.email || '—')}</div>
-                </div>
-                <div>
-                  <div class="field-label">Phone</div>
-                  <div class="field-value">${escHtml(lead.phone || '—')}</div>
-                </div>
-              </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="status-dropdown-menu hidden" id="status-dropdown-menu">
+          ${statuses.map(s => {
+            const color = _statusColors[s];
+            return `<div class="status-dropdown-item" onclick="panelStatusClick('${s}')">
+              <span class="status-dot" style="background:${color}"></span>
+              ${s.charAt(0).toUpperCase() + s.slice(1)}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const headerHtml = `
+    <div class="lead-header-card">
+      <a href="#leads" class="text-sm font-medium text-slate-500 hover:text-slate-800 hover:underline inline-flex items-center gap-1 mb-6 transition-colors" style="text-decoration-color: transparent;">
+        ← Back to Leads
+      </a>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="display:flex; gap:16px;">
+          <div style="width:56px; height:56px; border-radius:50%; background:${avatarColor}; flex-shrink:0;
+                      display:flex; align-items:center; justify-content:center; color:white;
+                      font-weight:700; font-size:20px; letter-spacing:0.02em;">${initials}</div>
+          <div>
+            <h2 style="font-size:24px; font-weight:700; color:#0f172a; margin:0; line-height:1.2;">${escHtml(lead.full_name)}</h2>
+            <p style="font-size:14px; color:#64748b; margin-top:4px;">
+              ${escHtml(lead.company||'—')}
+            </p>
+            <p style="font-size:13px; color:#64748b; margin-top:2px;">
+              ${escHtml(lead.campaign_name||'—')} &bull; ${escHtml(lead.form_location||'—')} &bull; <span title="${exactDate}">${timeStr}</span>
+            </p>
+            <div style="margin-top:8px; font-size:13px; color:#64748b; display:flex; align-items:center; gap:6px;">
+              Status: <span id="current-status-badge" style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; background:${_statusColors[lead.status] || '#94a3b8'}; text-transform:uppercase; letter-spacing:0.05em;">${lead.status}</span>
             </div>
-            
-            <!-- Company Info -->
-            <div class="lead-card">
-              <div class="section-label">Company Information</div>
-              <div class="space-y-3">
-                <div>
-                  <div class="field-label">Company Name</div>
-                  <div class="field-value">${escHtml(lead.company || '—')}</div>
-                </div>
-                <div>
-                  <div class="field-label">Industry</div>
-                  <div class="field-value">${escHtml(lead.industry || '—')}</div>
-                </div>
-              </div>
-            </div>
+            ${lead.is_duplicate ? '<span style="display:inline-block; margin-top:8px; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:0.05em; background:#fee2e2; color:#dc2626; text-transform:uppercase;">Duplicate</span>' : ''}
           </div>
         </div>
-
-        <!-- RIGHT COLUMN -->
         <div>
-          <div class="lead-header-card">
-            <div class="section-label">Enquiry Details</div>
-            <div class="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${escHtml(lead.message || 'No message provided.')}</div>
-          </div>
-
-          <div class="lead-card">
-            <div class="section-label">Attachments</div>
-            ${a.length === 0
-              ? '<div class="text-sm text-slate-400">No attachments</div>'
-              : a.map(f => {
-                  const ext = (f.filename || f.name || '').split('.').pop().toLowerCase();
-                  const isImg = ['jpg','jpeg','png','gif','webp','svg'].includes(ext);
-                  return '<div class="flex items-center gap-2 py-1.5">' +
-                    (isImg
-                      ? '<span class="text-blue-500 text-sm">🖼</span>'
-                      : '<span class="text-slate-400 text-sm">📄</span>') +
-                    '<a href="' + (f.url || '#') + '" target="_blank" class="text-sm text-blue-600 hover:underline truncate">' + escHtml(f.filename || f.name || 'file') + '</a>' +
-                    '</div>';
-                }).join('')}
-          </div>
-
-          <div class="lead-card">
-            <div class="section-label">Notes</div>
-            <textarea id="panel-notes" rows="5"
-              class="w-full mt-2 px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 resize-y"
-              placeholder="Add internal notes…">${escHtml(lead.notes || '')}</textarea>
-            <div class="flex justify-end mt-2">
-              <button onclick="saveNotes(${lead.id})"
-                class="btn-primary px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors">Save Notes</button>
-            </div>
-          </div>
-
+          ${statusHtml}
         </div>
+      </div>
+    </div>
+  `;
+
+  const copyIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+
+  // Contact Info
+  const contactHtml = `
+    <div class="lead-card">
+      <div class="section-label">Contact Info</div>
+      <div style="margin-bottom:16px;">
+        <div class="field-label">Email</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="field-value">${escHtml(lead.email||'—')}</span>
+          ${lead.email ? '<button class="copy-btn" onclick="_copyToClipboard(\''+escHtml(lead.email)+'\', this)" title="Copy email">'+copyIcon+'</button>' : ''}
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div class="field-label">Phone</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="field-value">${escHtml(lead.phone||'—')}</span>
+          ${lead.phone ? '<button class="copy-btn" onclick="_copyToClipboard(\''+escHtml(lead.phone)+'\', this)" title="Copy phone">'+copyIcon+'</button>' : ''}
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div class="field-label">Country</div>
+        <div class="field-value">${escHtml(lead.country||'—')}</div>
+      </div>
+      <div>
+        <div class="field-label">IP Address</div>
+        <div class="field-value" style="font-family:monospace;">${escHtml(lead.ip_address||'—')}</div>
+      </div>
+    </div>
+  `;
+
+  // Files
+  const files = lead.files || [];
+  let filesHtml = `
+    <div class="lead-card">
+      <div class="section-label">Files ${files.length ? `(${files.length} attached)` : ''}</div>
+  `;
+  if (!files.length) {
+    filesHtml += '<div style="text-align:center; padding:12px; color:#94a3b8; font-size:13px;">📎 No files attached</div>';
+  } else {
+    filesHtml += '<div style="display:flex; flex-direction:column; gap:8px;">';
+    files.forEach(f => {
+      const fi = _getFileIcon(f.original_name);
+      filesHtml += `
+        <div style="display:flex; align-items:center; gap:12px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+          <span style="font-size:22px; flex-shrink:0;">${fi.icon}</span>
+          <div style="flex:1; min-width:0;">
+            <p style="font-size:13px; font-weight:600; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(f.original_name)}</p>
+            <p style="font-size:11px; color:#94a3b8; margin-top:2px;">${fmtBytes(f.file_size)} &bull; ${timeAgo(f.uploaded_at || lead.submitted_at)}</p>
+          </div>
+          <a href="${escHtml(f.url)}" target="_blank"
+            style="flex-shrink:0; padding:6px 12px; border:1px solid #e2e8f0; border-radius:6px; color:#334155;
+                   font-size:12px; font-weight:600; text-decoration:none; transition:all 0.15s; background:#fff;"
+            onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#fff';">↓ Download</a>
+        </div>
+      `;
+    });
+    filesHtml += '</div>';
+  }
+  filesHtml += '</div>';
+
+  // Submission Details
+  const ua = lead.user_agent || '';
+  const ref = lead.referrer || '';
+  const submissionHtml = `
+    <div class="lead-card">
+      <div class="section-label">Submission Details</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <div class="field-label">Form Location</div>
+          <div class="field-value">${escHtml(lead.form_location||'—')}</div>
+        </div>
+        <div>
+          <div class="field-label">Referrer</div>
+          <div class="field-value" title="${escHtml(ref)}">${escHtml(_truncate(ref, 35))}</div>
+        </div>
+        <div>
+          <div class="field-label">Submitted At</div>
+          <div class="field-value">
+            ${fmtDate(lead.submitted_at).split(' ')[0]}<br>
+            <span style="color:#64748b; font-size:12px;">${fmtDate(lead.submitted_at).split(' ').slice(1).join(' ')}</span>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">User Agent</div>
+          <div class="field-value" title="${escHtml(ua)}" style="font-size:12px;">${escHtml(_truncate(ua, 50))}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Sync Flags
+  const flagItem = (label, val, txtTrue, txtFalse) => `
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:14px; color:${val ? '#16a34a' : '#94a3b8'}; font-weight:700; width:16px; text-align:center;">${val ? '✓' : '—'}</span>
+      <span style="font-size:13px; color:#334155; font-weight:500; flex:1;">${label}</span>
+      <span style="font-size:12px; color:${val ? '#16a34a' : '#94a3b8'}; font-weight:600;">${val ? txtTrue : txtFalse}</span>
+    </div>
+  `;
+  const flagsHtml = `
+    <div class="lead-card">
+      <div class="section-label">Sync Flags</div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        ${flagItem('Sheets Synced', lead.sheets_synced, 'Synced', 'Pending')}
+      </div>
+    </div>
+  `;
+
+  // Requirement
+  const requirementHtml = `
+    <div class="lead-card">
+      <div class="section-label">Requirement</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div>
+          <div class="field-label">Industry</div>
+          <div class="field-value">${escHtml(lead.industry||'—')}</div>
+        </div>
+        <div>
+          <div class="field-label">Requirement Type</div>
+          <div class="field-value">${escHtml(lead.requirement_type||'—')}</div>
+        </div>
+      </div>
+      <div>
+        <div class="field-label">Message</div>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;
+                    font-size:14px; line-height:1.7; color:#374151; min-height:120px; white-space:pre-wrap; word-break:break-word;">${escHtml(lead.message||'—')}</div>
+      </div>
+    </div>
+  `;
+
+  // Notes
+  const notesVal = escHtml(lead.notes || '');
+  const notesLen = (lead.notes || '').length;
+  const notesHtml = `
+    <div class="lead-card">
+      <div class="section-label">Notes</div>
+      <textarea id="panel-notes" oninput="_updateNotesMeta()"
+        style="width:100%; min-height:140px; padding:12px; font-size:14px; border:1px solid #e2e8f0;
+               border-radius:8px; color:#334155; resize:vertical; font-family:inherit; line-height:1.5;"
+        placeholder="Add internal notes about this lead...">${notesVal}</textarea>
+      <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:12px;">
+        <span id="panel-notes-counter" style="font-size:12px; color:#94a3b8;">${notesLen}/500</span>
+        <button id="panel-save-notes-btn" onclick="saveLeadNotes(${lead.id})" disabled
+          style="padding:8px 16px; font-size:13px; font-weight:600; border:none; border-radius:6px;
+                 background:#2563eb; color:#fff; cursor:pointer; transition:all 0.15s; opacity:0.5;"
+          onmouseover="if(!this.disabled) this.style.background='#1d4ed8';" onmouseout="this.style.background='#2563eb';">Save Notes</button>
+      </div>
+    </div>
+  `;
+
+  // Extra Data
+  let extraHtml = '';
+  if (Object.keys(lead.extra_data || {}).length > 0) {
+    extraHtml = `
+      <div class="lead-card">
+        <div class="section-label">Extra Data</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 16px;">
+          ${Object.entries(lead.extra_data).map(([k, v]) => `
+            <div class="field-label" style="text-transform:none; margin:0;">${escHtml(k)}</div>
+            <div class="field-value">${escHtml(v)}</div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // Assemble the Full Page
+  document.getElementById('page-lead-detail').innerHTML = `
+    ${headerHtml}
+    <div class="lead-detail-layout">
+      <div>
+        ${contactHtml}
+        ${filesHtml}
+        ${submissionHtml}
+        ${flagsHtml}
+      </div>
+      <div>
+        ${requirementHtml}
+        ${notesHtml}
+        ${extraHtml}
       </div>
     </div>
   `;
 }
 
-function statusDropdown(currentStatus) {
-  const statuses = ['new','reviewed','contacted','quoted','closed','spam'];
-  const colors = ['#3b82f6','#eab308','#8b5cf6','#f97316','#22c55e','#ef4444'];
-  const labels = ['New','Reviewed','Contacted','Quoted','Closed','Spam'];
-  const idx = statuses.indexOf(currentStatus);
-  const dotColor = colors[idx] || '#94a3b8';
-
-  return `
-    <div class="status-dropdown-container" tabindex="0" 
-      onfocusout="setTimeout(()=>document.querySelector('.status-dropdown-menu')?.classList.add('hidden'),200)">
-      <div class="status-dropdown-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
-        <span class="flex items-center gap-2">
-          <span class="status-dot" style="background:${dotColor}"></span>
-          ${(labels[idx] || currentStatus).charAt(0).toUpperCase() + (labels[idx] || currentStatus).slice(1)}
-        </span>
-        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
-      </div>
-      <div class="status-dropdown-menu hidden">
-        ${statuses.map((s, i) => `
-          <div class="status-dropdown-item" onclick="updateLeadStatus(${s === currentStatus ? 'null' : "'"+s+"'"});this.closest('.status-dropdown-menu').classList.add('hidden')">
-            <span class="status-dot" style="background:${colors[i]}"></span>
-            ${labels[i]}
-            ${s === currentStatus ? '<span class="ml-auto text-xs text-green-600">✓</span>' : ''}
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
+function _updateNotesMeta() {
+  const ta = document.getElementById('panel-notes');
+  const counter = document.getElementById('panel-notes-counter');
+  const btn = document.getElementById('panel-save-notes-btn');
+  if (!ta || !counter || !btn) return;
+  const len = ta.value.length;
+  counter.textContent = len + '/500';
+  counter.style.color = len > 500 ? '#dc2626' : '#94a3b8';
+  const changed = ta.value !== _panelOriginalNotes;
+  btn.disabled = !changed;
+  btn.style.opacity = changed ? '1' : '0.5';
+  btn.style.cursor = changed ? 'pointer' : 'not-allowed';
 }
 
-async function updateLeadStatus(newStatus) {
-  if (!newStatus) return;
-  const leadId = _currentLead?.id;
-  if (!leadId) return;
-  const data = await apiCall(`/api/leads/${leadId}/`, {
+async function panelStatusClick(newStatus) {
+  if (!_currentLead || _currentLead.status === newStatus) {
+    document.getElementById('status-dropdown-menu')?.classList.add('hidden');
+    return;
+  }
+  document.getElementById('status-dropdown-menu')?.classList.add('hidden');
+  const oldStatus = _currentLead.status;
+
+  // Optimistic UI update
+  _currentLead.status = newStatus;
+  _updateStatusDropdownUI(newStatus);
+
+  const result = await apiCall(`/api/leads/${_currentLead.id}/`, {
     method: 'PATCH',
     body: JSON.stringify({ status: newStatus }),
   });
-  if (data) {
-    _currentLead.status = newStatus;
-    const header = document.querySelector('.lead-header-card');
-    if (header) header.querySelector('.status-dropdown-container')?.outerHTML = statusDropdown(newStatus);
-    showToast('Status updated to ' + newStatus);
+  if (result) {
+    _currentLead = result;
+    const properName = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    showToast(`Status updated to ${properName}`, 'success');
+    if (_currentPage === 'leads') loadLeads();
+    if (_currentPage === 'dashboard') loadDashboard();
+  } else {
+    // Revert
+    _currentLead.status = oldStatus;
+    _updateStatusDropdownUI(oldStatus);
+    showToast('Failed to update status', 'error');
   }
 }
 
-async function saveNotes(leadId) {
-  const notes = document.getElementById('panel-notes').value;
-  const data = await apiCall(`/api/leads/${leadId}/`, {
+function _updateStatusDropdownUI(activeStatus) {
+  const dot = document.getElementById('status-dropdown-dot');
+  if (dot) dot.style.background = _statusColors[activeStatus] || '#94a3b8';
+  
+  const label = document.getElementById('status-dropdown-label');
+  if (label) label.textContent = activeStatus.charAt(0).toUpperCase() + activeStatus.slice(1);
+  
+  const badge = document.getElementById('current-status-badge');
+  if (badge) {
+    badge.textContent = activeStatus;
+    badge.style.background = _statusColors[activeStatus] || '#94a3b8';
+  }
+}
+
+// Keep legacy function name for compatibility with leads table onclick
+async function updateLeadStatus(id, newStatus) {
+  panelStatusClick(newStatus);
+}
+
+async function saveLeadNotes(id) {
+  const ta = document.getElementById('panel-notes');
+  const btn = document.getElementById('panel-save-notes-btn');
+  if (!ta || !btn) return;
+  const notes = ta.value;
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const result = await apiCall(`/api/leads/${id}/`, {
     method: 'PATCH',
     body: JSON.stringify({ notes }),
   });
-  if (data) {
+  if (result) {
+    _currentLead = result;
     _panelOriginalNotes = notes;
-    showToast('Notes saved');
+    showToast('Notes saved', 'success');
+    btn.textContent = '✓ Saved';
+    btn.style.background = '#16a34a';
+    setTimeout(() => {
+      btn.textContent = 'Save Notes';
+      btn.style.background = '#2563eb';
+      _updateNotesMeta();
+    }, 1500);
+  } else {
+    btn.textContent = 'Save Notes';
+    btn.disabled = false;
   }
 }
 
-/* ===================================================================
-   EXPORT CSV
-   =================================================================== */
-async function exportCSV() {
-  const params = new URLSearchParams();
-  params.set('export', 'csv');
-  const search = document.getElementById('filter-search').value.trim();
-  if (search) params.set('search', search);
-  const campaign = document.getElementById('filter-campaign').value;
-  if (campaign) params.set('campaign', campaign);
-  const status = document.getElementById('filter-status').value;
-  if (status) params.set('status', status);
-  const industry = document.getElementById('filter-industry').value;
-  if (industry) params.set('industry', industry);
-  const location = document.getElementById('filter-form-location').value;
-  if (location) params.set('form_location', location);
-  const dateFrom = document.getElementById('filter-date-from').value;
-  if (dateFrom) params.set('date_from', dateFrom);
-  const dateTo = document.getElementById('filter-date-to').value;
-  if (dateTo) params.set('date_to', dateTo);
-
-  showLoading();
-  try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (_token) headers['Authorization'] = `Token ${_token}`;
-    const res = await fetch(API_BASE + `/api/leads/?${params.toString()}`, { headers });
-    if (!res.ok) { showToast('Export failed', 'error'); return; }
-    const data = await res.json();
-    if (!data || !data.results || data.results.length === 0) {
-      showToast('No leads to export', 'info');
-      return;
-    }
-    const rows = [['Submitted','Name','Email','Phone','Company','Industry','Campaign','Status','Location','Message','Notes']];
-    data.results.forEach(l => {
-      rows.push([l.submitted_at||'',l.name||'',l.email||'',l.phone||'',l.company||'',l.industry||'',l.campaign_name||'',l.status||'',l.form_location||'',(l.message||'').replace(/\n/g,' '),(l.notes||'').replace(/\n/g,' ')]);
-    });
-    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
-    const blob = new Blob([csv], { type:'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'leads_export.csv'; a.click();
-    URL.revokeObjectURL(url);
-    showToast('CSV downloaded');
-  } catch(e) {
-    showToast('Export failed: ' + e.message, 'error');
-  } finally {
-    hideLoading();
-  }
+function retrySheets(id) {
+  showToast('This feature will be available soon.', 'info');
 }
 
+
+
 /* ===================================================================
-   CAMPAIGNS
+   CAMPAIGNS PAGE
    =================================================================== */
 async function loadCampaigns() {
-  const tbody = document.getElementById('campaigns-tbody');
-  tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12"><div class="spinner" style="margin:0 auto;"></div></td></tr>';
   const data = await apiCall('/api/campaigns/');
-  if (!data) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-slate-400">Failed to load campaigns</td></tr>'; return; }
-  _campaigns = data.results || data;
-  tbody.innerHTML = _campaigns.map(c => `
-    <tr class="data-row" onclick="openCampaignModal(${c.id})">
-      <td class="px-4 py-3 font-medium text-slate-700">${escHtml(c.name)}</td>
-      <td class="px-4 py-3 text-slate-500 font-mono text-xs">${escHtml(c.slug)}</td>
-      <td class="px-4 py-3">${c.is_active ? '<span class="badge badge-active">Active</span>' : '<span class="badge badge-inactive">Inactive</span>'}</td>
-      <td class="px-4 py-3 text-slate-600">${c.lead_count ?? '—'}</td>
-      <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatDateShort(c.created_at)}</td>
-      <td class="px-4 py-3 text-right">
-        <button onclick="event.stopPropagation();openCampaignModal(${c.id})" 
-          class="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">Edit</button>
+  if (!data) return;
+  _campaigns = data;
+  renderCampaignsTable(data);
+
+  // Refresh lead filter dropdown
+  const sel = document.getElementById('filter-campaign');
+  while (sel.options.length > 1) sel.remove(1);
+  _campaigns.forEach(c => sel.add(new Option(c.name, c.id)));
+}
+
+function renderCampaignsTable(list) {
+  const tbody = document.getElementById('campaigns-tbody');
+  if (!list.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="7" class="text-center py-14">
+        <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+          <div style="width:48px; height:48px; background:#f1f5f9; border-radius:50%;
+                      display:flex; align-items:center; justify-content:center; font-size:22px;">📋</div>
+          <p class="text-slate-500 text-sm font-medium">No campaigns yet</p>
+          <button onclick="openCampaignModal(null)" class="text-sm font-medium text-blue-600 hover:text-blue-700">
+            Create your first campaign →
+          </button>
+        </div>
+      </td></tr>
+    `;
+    return;
+  }
+  tbody.innerHTML = list.map(c => `
+    <tr style="border-bottom:1px solid #f8fafc;"
+        onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <td class="px-4 py-3">
+        <div class="font-medium text-slate-800 text-sm">${escHtml(c.name)}</div>
+        ${c.url ? `<a href="${escHtml(c.url)}" target="_blank"
+          style="font-size:11px; color:#2563eb; text-decoration:none;"
+          onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+          ${escHtml(c.url)}</a>` : ''}
+      </td>
+      <td class="px-4 py-3 text-slate-500 text-xs" style="font-family:monospace;">${escHtml(c.slug)}</td>
+      <td class="px-4 py-3"><span class="badge ${c.is_active ? 'badge-active' : 'badge-inactive'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td class="px-4 py-3 font-semibold text-slate-800 text-sm">${c.lead_count.toLocaleString()}</td>
+      <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">${fmtDate(c.created_at)}</td>
+      <td class="px-4 py-3">
+        <button onclick="openCampaignModal(${c.id})"
+          style="font-size:12px; font-weight:500; color:#2563eb; border:1px solid #bfdbfe;
+                 padding:5px 12px; border-radius:6px; cursor:pointer; background:white; transition:background .1s;"
+          onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='white'">
+          Edit
+        </button>
       </td>
     </tr>
   `).join('');
@@ -1593,41 +1954,36 @@ async function loadCampaigns() {
 function openCampaignModal(campaignId) {
   _editingCampaignId = campaignId;
   const modal = document.getElementById('campaign-modal');
-  modal.style.display = 'flex';
 
-  if (campaignId === null) {
+  document.getElementById('campaign-form').reset();
+  resetFieldsConfig();
+  _campaignIsActive = true;
+  syncActiveToggle();
+
+  if (campaignId) {
+    document.getElementById('modal-title').textContent = 'Edit Campaign';
+    document.getElementById('c-apikey-row').classList.remove('hidden');
+    const c = _campaigns.find(x => x.id === campaignId);
+    if (c) fillCampaignModal(c);
+  } else {
     document.getElementById('modal-title').textContent = 'Add Campaign';
-    document.getElementById('campaign-form').reset();
     document.getElementById('c-apikey-row').classList.add('hidden');
-    document.getElementById('c-active-btn').setAttribute('aria-checked','true');
-    document.getElementById('c-active-btn').style.background = '#2563eb';
-    document.getElementById('c-active-knob').style.transform = 'translateX(16px)';
-    document.getElementById('c-active-label').textContent = '(accepts submissions)';
-    _campaignIsActive = true;
-    renderFieldsConfig([]);
-    return;
   }
 
-  const campaign = _campaigns.find(c => c.id === campaignId);
-  if (!campaign) return;
+  modal.style.display = 'flex';
+}
 
-  document.getElementById('modal-title').textContent = 'Edit Campaign';
-  document.getElementById('c-name').value = campaign.name || '';
-  document.getElementById('c-slug').value = campaign.slug || '';
-  document.getElementById('c-url').value = campaign.page_url || '';
-  document.getElementById('c-description').value = campaign.description || '';
-  document.getElementById('c-sheets-id').value = campaign.google_sheets_id || '';
-
-  _campaignIsActive = campaign.is_active !== false;
-  document.getElementById('c-active-btn').setAttribute('aria-checked', _campaignIsActive ? 'true' : 'false');
-  document.getElementById('c-active-btn').style.background = _campaignIsActive ? '#2563eb' : '#e2e8f0';
-  document.getElementById('c-active-knob').style.transform = _campaignIsActive ? 'translateX(16px)' : 'translateX(2px)';
-  document.getElementById('c-active-label').textContent = _campaignIsActive ? '(accepts submissions)' : '(paused — not accepting)';
-
-  document.getElementById('c-apikey-row').classList.remove('hidden');
-  document.getElementById('c-apikey').value = campaign.api_key || '—';
-
-  renderFieldsConfig(campaign.fields_config || []);
+function fillCampaignModal(c) {
+  document.getElementById('c-name').value          = c.name || '';
+  document.getElementById('c-slug').value          = c.slug || '';
+  document.getElementById('c-url').value           = c.url || '';
+  document.getElementById('c-description').value   = c.description || '';
+  document.getElementById('c-sheets-id').value     = c.sheets_id || '';
+  document.getElementById('c-apikey').value        = c.api_key || '';
+  _campaignIsActive = c.is_active !== false;
+  syncActiveToggle();
+  resetFieldsConfig();
+  Object.entries(c.fields_config || {}).forEach(([f, v]) => addFieldRow(f, v));
 }
 
 function closeCampaignModal() {
@@ -1635,71 +1991,107 @@ function closeCampaignModal() {
   _editingCampaignId = null;
 }
 
+function autoSlug() {
+  if (_editingCampaignId) return; // don't change slug in edit mode
+  const name = document.getElementById('c-name').value;
+  document.getElementById('c-slug').value = name
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-').replace(/-+/g, '-');
+}
+
 function toggleActiveState() {
   _campaignIsActive = !_campaignIsActive;
-  const btn = document.getElementById('c-active-btn');
+  syncActiveToggle();
+}
+
+function syncActiveToggle() {
+  const btn   = document.getElementById('c-active-btn');
+  const knob  = document.getElementById('c-active-knob');
+  const label = document.getElementById('c-active-label');
+  btn.style.background    = _campaignIsActive ? '#2563eb' : '#cbd5e1';
+  knob.style.transform    = _campaignIsActive ? 'translateX(16px)' : 'translateX(0)';
+  label.textContent       = _campaignIsActive ? '(accepts submissions)' : '(paused)';
   btn.setAttribute('aria-checked', _campaignIsActive ? 'true' : 'false');
-  btn.style.background = _campaignIsActive ? '#2563eb' : '#e2e8f0';
-  document.getElementById('c-active-knob').style.transform = _campaignIsActive ? 'translateX(16px)' : 'translateX(2px)';
-  document.getElementById('c-active-label').textContent = _campaignIsActive ? '(accepts submissions)' : '(paused — not accepting)';
 }
 
-function autoSlug() {
-  const name = document.getElementById('c-name').value;
-  document.getElementById('c-slug').value = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
+async function saveCampaign(e) {
+  e.preventDefault();
+  const name = document.getElementById('c-name').value.trim();
+  const slug = document.getElementById('c-slug').value.trim();
 
-function renderFieldsConfig(fields) {
-  const tbody = document.getElementById('fields-config-tbody');
-  if (!fields || fields.length === 0) {
-    tbody.innerHTML = '<tr id="fields-empty-row"><td colspan="3" class="text-center py-4 text-slate-400 text-xs">No fields configured — click "Add Row" to begin.</td></tr>';
-    return;
+  if (!name || !slug) { showToast('Name and slug are required', 'error'); return; }
+  if (!confirm(_editingCampaignId ? 'Save changes to this campaign?' : 'Create this campaign?')) return;
+
+  const payload = {
+    name, slug,
+    url:          document.getElementById('c-url').value.trim(),
+    description:  document.getElementById('c-description').value.trim(),
+    sheets_id:    document.getElementById('c-sheets-id').value.trim(),
+    is_active:    _campaignIsActive,
+    fields_config: collectFieldsConfig(),
+  };
+
+  const result = _editingCampaignId
+    ? await apiCall(`/api/campaigns/${_editingCampaignId}/`, { method:'PUT',  body:JSON.stringify(payload) })
+    : await apiCall('/api/campaigns/',                        { method:'POST', body:JSON.stringify(payload) });
+
+  if (result) {
+    showToast(_editingCampaignId ? 'Campaign updated' : 'Campaign created', 'success');
+    closeCampaignModal();
+    loadCampaigns();
   }
-  tbody.innerHTML = fields.map((f, i) => `
-    <tr>
-      <td class="px-3 py-2">
-        <input type="text" value="${escHtml(f.field || '')}" placeholder="field_name"
-          class="w-full px-2 py-1 text-xs border border-slate-200 rounded text-slate-700" />
-      </td>
-      <td class="px-3 py-2">
-        <select class="px-2 py-1 text-xs border border-slate-200 rounded text-slate-700 bg-white">
-          <option value="visible" ${f.visibility === 'hidden' ? '' : 'selected'}>Visible</option>
-          <option value="hidden" ${f.visibility === 'hidden' ? 'selected' : ''}>Hidden</option>
-        </select>
-      </td>
-      <td class="px-3 py-2 text-center">
-        <button type="button" onclick="this.closest('tr').remove(); if(document.getElementById('fields-config-tbody').children.length===0) document.getElementById('fields-config-tbody').innerHTML='<tr id=\\'fields-empty-row\\'><td colspan=\\'3\\' class=\\'text-center py-4 text-slate-400 text-xs\\'>No fields configured — click \\'Add Row\\' to begin.</td></tr>';"
-          class="text-red-400 hover:text-red-600 transition-colors">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-          </svg>
-        </button>
+}
+
+function copyApiKey() {
+  const val = document.getElementById('c-apikey').value;
+  navigator.clipboard.writeText(val)
+    .then(() => showToast('API key copied', 'success'))
+    .catch(() => showToast('Copy failed — select the text manually', 'error'));
+}
+
+/* ===================================================================
+   FIELDS CONFIG BUILDER
+   =================================================================== */
+const FIELD_NAMES  = ['company','phone','country','industry','requirement_type','file_upload'];
+const VISIBILITIES = ['required','optional','hidden'];
+
+function resetFieldsConfig() {
+  document.getElementById('fields-config-tbody').innerHTML = `
+    <tr id="fields-empty-row">
+      <td colspan="3" class="text-center py-4 text-slate-400 text-xs">
+        No fields configured — click "Add Row".
       </td>
     </tr>
-  `).join('');
+  `;
 }
 
-function addFieldRow() {
+function addFieldRow(fieldVal = '', visVal = 'required') {
   const tbody = document.getElementById('fields-config-tbody');
-  const emptyRow = document.getElementById('fields-empty-row');
-  if (emptyRow) emptyRow.remove();
+  const empty = document.getElementById('fields-empty-row');
+  if (empty) empty.remove();
+
+  const rowId = `fcr-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const tr = document.createElement('tr');
+  tr.id = rowId;
+  tr.style.borderTop = '1px solid #f1f5f9';
   tr.innerHTML = `
     <td class="px-3 py-2">
-      <input type="text" placeholder="field_name"
-        class="w-full px-2 py-1 text-xs border border-slate-200 rounded text-slate-700" />
-    </td>
-    <td class="px-3 py-2">
-      <select class="px-2 py-1 text-xs border border-slate-200 rounded text-slate-700 bg-white">
-        <option value="visible" selected>Visible</option>
-        <option value="hidden">Hidden</option>
+      <select class="fc-field w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-700">
+        ${FIELD_NAMES.map(f => `<option value="${f}" ${f===fieldVal?'selected':''}>${f}</option>`).join('')}
       </select>
     </td>
-    <td class="px-3 py-2 text-center">
-      <button type="button" onclick="this.closest('tr').remove(); if(document.getElementById('fields-config-tbody').children.length===0) document.getElementById('fields-config-tbody').innerHTML='<tr id=\\'fields-empty-row\\'><td colspan=\\'3\\' class=\\'text-center py-4 text-slate-400 text-xs\\'>No fields configured — click \\'Add Row\\' to begin.</td></tr>';"
-        class="text-red-400 hover:text-red-600 transition-colors">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+    <td class="px-3 py-2">
+      <select class="fc-vis w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-700">
+        ${VISIBILITIES.map(v => `<option value="${v}" ${v===visVal?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </td>
+    <td class="px-3 py-2">
+      <button type="button" onclick="removeFieldRow('${rowId}')"
+        style="color:#94a3b8; background:none; border:none; cursor:pointer; padding:2px;"
+        onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+        <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
       </button>
     </td>
@@ -1707,54 +2099,81 @@ function addFieldRow() {
   tbody.appendChild(tr);
 }
 
-async function saveCampaign(e) {
-  e.preventDefault();
-  const name = document.getElementById('c-name').value.trim();
-  const slug = document.getElementById('c-slug').value.trim();
-  if (!name || !slug) { showToast('Name and slug are required', 'error'); return; }
-
-  const payload = {
-    name,
-    slug,
-    page_url: document.getElementById('c-url').value.trim() || '',
-    description: document.getElementById('c-description').value.trim() || '',
-    google_sheets_id: document.getElementById('c-sheets-id').value.trim() || '',
-    is_active: _campaignIsActive,
-  };
-
-  // Collect fields config
-  const fieldRows = document.querySelectorAll('#fields-config-tbody tr:not(#fields-empty-row)');
-  const fields = [];
-  fieldRows.forEach(tr => {
-    const inputs = tr.querySelectorAll('input, select');
-    if (inputs.length >= 2) {
-      fields.push({ field: inputs[0].value.trim(), visibility: inputs[1].value });
-    }
-  });
-  if (fields.length > 0) payload.fields_config = fields;
-
-  const method = _editingCampaignId ? 'PATCH' : 'POST';
-  const url = _editingCampaignId ? `/api/campaigns/${_editingCampaignId}/` : '/api/campaigns/';
-  const data = await apiCall(url, { method, body: JSON.stringify(payload) });
-  if (data) {
-    closeCampaignModal();
-    showToast(_editingCampaignId ? 'Campaign updated' : 'Campaign created');
-    loadCampaigns();
-  }
+function removeFieldRow(rowId) {
+  document.getElementById(rowId)?.remove();
+  const tbody = document.getElementById('fields-config-tbody');
+  if (!tbody.querySelector('tr:not(#fields-empty-row)')) resetFieldsConfig();
 }
 
-function copyApiKey() {
-  const key = document.getElementById('c-apikey').value;
-  if (key && key !== '—') {
-    navigator.clipboard.writeText(key).then(() => showToast('API key copied'));
-  }
+function collectFieldsConfig() {
+  const config = {};
+  document.querySelectorAll('#fields-config-tbody tr:not(#fields-empty-row)').forEach(tr => {
+    const f = tr.querySelector('.fc-field')?.value;
+    const v = tr.querySelector('.fc-vis')?.value;
+    if (f && v) config[f] = v;
+  });
+  return config;
 }
 
 /* ===================================================================
-   INIT — on page load check for existing token (stored in session)
+   UTILITY FUNCTIONS
    =================================================================== */
-// No auto-login — user must sign in each session.
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+    + ' ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtDateFull(iso) {
+  if (!iso) return '';
+  return new Date(iso).toISOString().replace('T',' ').slice(0,19);
+}
+
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function emptyRow(cols, msg) {
+  return `<tr><td colspan="${cols}" class="text-center py-10 text-slate-400 text-sm">${msg}</td></tr>`;
+}
+
+function timeAgo(dateString) {
+  if (!dateString) return '—';
+  const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
+  let interval = seconds / 31536000;
+  if (interval > 1) return Math.floor(interval) + " years ago";
+  interval = seconds / 2592000;
+  if (interval > 1) return Math.floor(interval) + " months ago";
+  interval = seconds / 86400;
+  if (interval >= 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? " day ago" : " days ago");
+  interval = seconds / 3600;
+  if (interval >= 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? " hour ago" : " hours ago");
+  interval = seconds / 60;
+  if (interval >= 1) return Math.floor(interval) + (Math.floor(interval) === 1 ? " minute ago" : " minutes ago");
+  return "just now";
+}
+
+/* ===================================================================
+   KEYBOARD SHORTCUTS
+   =================================================================== */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeLeadPanel();
+    closeCampaignModal();
+  }
+});
 </script>
 
 </body>
-</html>]]>
+</html>
