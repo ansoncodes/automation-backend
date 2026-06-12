@@ -64,6 +64,8 @@ INSTALLED_APPS = [
     "campaigns",
     "leads",
     "core",
+    # Cron trigger — external cron service hits /cron/run/?token=...
+    "cron",
 ]
 
 MIDDLEWARE = [
@@ -208,6 +210,15 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# External cron trigger
+# ──────────────────────────────────────────────────────────────────────────────
+# CRON_SECRET is a shared token used by the /cron/run/ endpoint to authenticate
+# incoming requests from an external cron service (e.g. cron-job.org).
+# Set a strong random value, e.g.  python -c "import secrets; print(secrets.token_urlsafe(32))"
+# ──────────────────────────────────────────────────────────────────────────────
+CRON_SECRET = os.environ.get("CRON_SECRET")
 
 # Base URL of this server — used to build admin links inside notification emails
 BASE_URL = config("BASE_URL", default="http://localhost:8000")
