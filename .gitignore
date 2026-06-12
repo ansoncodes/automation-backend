@@ -75,3 +75,6 @@ celerybeat-schedule
 
 # Docker
 docker-compose.override.yml
+
+#docs
+DOCUMENTATION.md
