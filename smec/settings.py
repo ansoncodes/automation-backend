@@ -25,6 +25,7 @@ CORS:
 Security headers (HTTPS) are automatically enabled when DEBUG=False.
 """
 
+import os
 from pathlib import Path
 from decouple import config, Csv
 
@@ -36,22 +37,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-SECRET_KEY = config("DJANGO_SECRET_KEY")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
-DEBUG = config("DJANGO_DEBUG", default=True, cast=bool)
+DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = config(
-    "DJANGO_ALLOWED_HOSTS",
-    default="localhost,127.0.0.1",
-    cast=Csv(),
-)
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
-# Dynamically trusted origins for CSRF — derived from ALLOWED_HOSTS
-CSRF_TRUSTED_ORIGINS = [
-    f"https://{host}"
-    for host in ALLOWED_HOSTS
-    if host not in ("localhost", "127.0.0.1")
-]
+CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
 
 # ---------------------------------------------------------------------------
 # Application definition
@@ -234,7 +226,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = config(
 # Production: set CORS_ALLOW_ALL_ORIGINS=False and list your domains in
 #             CORS_ALLOWED_ORIGINS (comma-separated).
 # ---------------------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", default=True, cast=bool)
+CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
 
 if not CORS_ALLOW_ALL_ORIGINS:
     CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
