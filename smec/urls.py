@@ -35,9 +35,6 @@ urlpatterns = [
 
     # Campaign panel endpoints (token auth)
     path("api/", include("campaigns.urls")),
-
-    # External cron trigger — hit by cron-job.org or similar
-    path("cron/", include("cron.urls")),
 ]
 
 # Serve uploaded files locally during development
