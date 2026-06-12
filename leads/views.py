@@ -67,6 +67,14 @@ class HealthCheckView(APIView):
         return Response({"status": "ok"})
 
 
+def rate_limit_ip_key(group, request):
+    """
+    Extract the real client IP for django-ratelimit so it doesn't block everyone
+    when running behind a load balancer (like Render or Nginx).
+    """
+    return get_client_ip(request) or "127.0.0.1"
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class LeadSubmitView(APIView):
     """
@@ -75,7 +83,7 @@ class LeadSubmitView(APIView):
     Authentication: none — the endpoint is public.
     The api_key in the request body identifies the campaign, not the user.
 
-    Rate limiting: 5 POST requests per IP per hour via django-ratelimit.
+    Rate limiting: 20 POST requests per IP per hour via django-ratelimit.
     """
 
     # Public endpoint — identified by api_key, not by user token
@@ -85,7 +93,7 @@ class LeadSubmitView(APIView):
     # Accept multipart form data (for file uploads) and regular POST forms
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    @method_decorator(ratelimit(key="ip", rate="5/h", method="POST", block=False))
+    @method_decorator(ratelimit(key=rate_limit_ip_key, rate="20/h", method="POST", block=False))
     def post(self, request):
         """
         Handle a single RFQ form submission.
