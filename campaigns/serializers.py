@@ -43,7 +43,6 @@ class CampaignSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "notify_email",
-            "sheets_id",
             "fields_config",
             "lead_count",
         ]

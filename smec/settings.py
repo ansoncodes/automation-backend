@@ -37,14 +37,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+SECRET_KEY = config("DJANGO_SECRET_KEY")
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
+DEBUG = config("DJANGO_DEBUG", default="False") == "True"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost").split(",")
+ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="localhost", cast=Csv())
 
-_csrf_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
-CSRF_TRUSTED_ORIGINS = [o for o in _csrf_origins.split(",") if o.strip()]
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 
 # ---------------------------------------------------------------------------
 # Application definition
@@ -212,13 +211,6 @@ REST_FRAMEWORK = {
 # Base URL of this server — used to build admin links inside notification emails
 BASE_URL = config("BASE_URL", default="http://localhost:8000")
 
-# ---------------------------------------------------------------------------
-# Google Sheets integration
-# ---------------------------------------------------------------------------
-GOOGLE_SERVICE_ACCOUNT_JSON = config(
-    "GOOGLE_SERVICE_ACCOUNT_JSON",
-    default="service_account.json",
-)
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -227,7 +219,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = config(
 # Production: set CORS_ALLOW_ALL_ORIGINS=False and list your domains in
 #             CORS_ALLOWED_ORIGINS (comma-separated).
 # ---------------------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
+CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", default="False") == "True"
 
 if not CORS_ALLOW_ALL_ORIGINS:
     CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())

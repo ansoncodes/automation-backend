@@ -237,7 +237,6 @@ class LeadListSerializer(serializers.ModelSerializer):
             "submitted_at",
             "status",
             "is_duplicate",
-            "sheets_synced",
             "notes",
             "extra_data",
             "consent",

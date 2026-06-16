@@ -5,7 +5,7 @@ Defines the Lead and RFQFile models.
 
 Lead — one record per form submission. Contains all the data collected
 from the RFQ form plus metadata (IP, user agent, referrer) and tracking
-flags (email sent, sheets synced, duplicate).
+flags (email sent, duplicate).
 
 RFQFile — one record per uploaded attachment, linked to a Lead via FK.
 Files are stored using Django's file storage backend (local in dev, S3 in prod).
@@ -124,10 +124,6 @@ class Lead(models.Model):
     is_duplicate = models.BooleanField(
         default=False,
         help_text="True if another lead with the same email+campaign exists in the last 24 hours",
-    )
-    sheets_synced = models.BooleanField(
-        default=False,
-        help_text="True if this lead was successfully pushed to Google Sheets",
     )
 
     class Meta:

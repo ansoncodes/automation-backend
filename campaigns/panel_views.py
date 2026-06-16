@@ -80,7 +80,7 @@ class CampaignListCreateView(APIView):
 
         Required fields : name, slug
         Optional fields : url, description, notify_email, is_active,
-                          fields_config, sheets_id
+                          fields_config
         Auto-generated  : api_key (UUID), created_at
 
         Returns 400 { "error": "Slug already exists" } on duplicate slug.

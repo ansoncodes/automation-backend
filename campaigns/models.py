@@ -69,14 +69,6 @@ class Campaign(models.Model):
         help_text="Sales notification email for this campaign. Falls back to SALES_EMAIL setting if blank.",
     )
 
-    # Google Sheets spreadsheet ID where leads from this campaign are logged.
-    # Leave blank to disable Sheets integration for this campaign.
-    sheets_id = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Google Sheets spreadsheet ID (from the sheet URL). Leave blank to skip.",
-    )
-
     # Per-campaign field configuration — drives dynamic validation.
     # Keys are Lead field names; values are "required", "optional", or "hidden".
     fields_config = models.JSONField(

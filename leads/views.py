@@ -8,19 +8,16 @@ Endpoints:
   GET  /api/health/        — health check (returns {"status": "ok"})
 
 The submit view is intentionally kept thin. All business logic lives in
-service modules (emails.py, sheets.py) so it can be easily moved to
+service modules (emails.py) so it can be easily moved to
 Celery tasks in the future without changing the view code.
 
 Submit flow (in order):
   1. Honeypot check  — silent 200 if 'website' field is filled
-  2. Rate limit      — 5 submissions per IP per hour
-  3. Resolve campaign from api_key
-  4. Validate with LeadSerializer
-  5. Duplicate detection (same email+campaign in last 24h)
-  6. Save Lead
-  7. Save RFQ file attachments
-  8. Push to Google Sheets (never blocks on failure)
-  9. Return 200
+  2. Resolve campaign from api_key
+  3. Validate with LeadSerializer
+  4. Collect extra / custom fields
+  5. Duplicate detection + Lead save + file saves (atomic)
+  6. Return 200
 """
 
 import logging
@@ -39,7 +36,6 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny
 
-from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 
 from campaigns.models import Campaign
@@ -47,7 +43,7 @@ from core.utils import get_client_ip
 from .models import Lead, RFQFile
 from .serializers import LeadSerializer
 from .validators import validate_rfq_files
-from .sheets import push_to_sheets
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +63,6 @@ class HealthCheckView(APIView):
         return Response({"status": "ok"})
 
 
-def rate_limit_ip_key(group, request):
-    """
-    Extract the real client IP for django-ratelimit so it doesn't block everyone
-    when running behind a load balancer (like Render or Nginx).
-    """
-    return get_client_ip(request) or "127.0.0.1"
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -83,7 +73,7 @@ class LeadSubmitView(APIView):
     Authentication: none — the endpoint is public.
     The api_key in the request body identifies the campaign, not the user.
 
-    Rate limiting: 20 POST requests per IP per hour via django-ratelimit.
+    Authentication: public endpoint identified by api_key only.
     """
 
     # Public endpoint — identified by api_key, not by user token
@@ -93,7 +83,6 @@ class LeadSubmitView(APIView):
     # Accept multipart form data (for file uploads) and regular POST forms
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    @method_decorator(ratelimit(key=rate_limit_ip_key, rate="20/h", method="POST", block=False))
     def post(self, request):
         """
         Handle a single RFQ form submission.
@@ -110,18 +99,7 @@ class LeadSubmitView(APIView):
             return Response({"success": True, "message": "RFQ received."})
 
         # ------------------------------------------------------------------
-        # STEP 2: Rate limit check
-        # django-ratelimit sets request.limited = True if the limit is hit.
-        # We checked block=False above so we can return a custom response.
-        # ------------------------------------------------------------------
-        if getattr(request, "limited", False):
-            return Response(
-                {"success": False, "message": "Too many submissions. Please try again later."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-
-        # ------------------------------------------------------------------
-        # STEP 3: Resolve campaign from api_key
+        # STEP 2: Resolve campaign from api_key
         # ------------------------------------------------------------------
         api_key = request.data.get("api_key")
         if not api_key:
@@ -164,7 +142,7 @@ class LeadSubmitView(APIView):
                 )
 
         # ------------------------------------------------------------------
-        # STEP 4: Validate lead data with LeadSerializer
+        # STEP 3: Validate lead data with LeadSerializer
         # Pass the campaign in context so the serializer can apply
         # per-campaign field requirements from fields_config.
         # ------------------------------------------------------------------
@@ -179,7 +157,7 @@ class LeadSubmitView(APIView):
             )
 
         # ------------------------------------------------------------------
-        # STEP 4b: Collect extra / custom fields (Fix 8)
+        # STEP 4: Collect extra / custom fields (Fix 8)
         # Any POST key that is not a declared serializer field, api_key,
         # rfq_files, or website is captured into extra_data. This lets
         # campaigns collect custom fields without model migrations.
@@ -261,16 +239,6 @@ class LeadSubmitView(APIView):
             )
 
         # ------------------------------------------------------------------
-        # STEP 8: Push to Google Sheets (only if campaign has a sheet ID)
-        # Failure here must NEVER fail the submission.
-        # ------------------------------------------------------------------
-        if campaign.sheets_id:
-            synced = push_to_sheets(lead, campaign.sheets_id)
-            if synced:
-                lead.sheets_synced = True
-                lead.save(update_fields=["sheets_synced"])
-
-        # ------------------------------------------------------------------
-        # STEP 9: Return success
+        # STEP 7: Return success
         # ------------------------------------------------------------------
         return Response({"success": True, "message": "RFQ received."})

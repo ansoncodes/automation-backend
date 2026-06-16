@@ -41,12 +41,11 @@ class CampaignAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Notifications & Integrations",
+            "Notifications",
             {
-                "fields": ("notify_email", "sheets_id"),
+                "fields": ("notify_email",),
                 "description": (
-                    "notify_email overrides the global SALES_EMAIL for this campaign. "
-                    "sheets_id is the Google Spreadsheet ID from the sheet URL."
+                    "notify_email overrides the global SALES_EMAIL for this campaign."
                 ),
             },
         ),

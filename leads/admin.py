@@ -10,7 +10,6 @@ The sales team uses this panel to:
   - View attached files inline
   - Export filtered leads to CSV
   - Resend sales notification emails
-  - Retry failed Google Sheets syncs
   - Bulk-mark leads by status
 
 All system-generated fields (IP, timestamp, flags) are readonly to
@@ -25,7 +24,6 @@ from django.http import StreamingHttpResponse
 from django.conf import settings
 
 from .models import Lead, RFQFile
-from .sheets import push_to_sheets
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +68,7 @@ class LeadAdmin(admin.ModelAdmin):
       - Inline file attachments (read-only)
       - Bulk status updates
       - CSV export with streaming (no memory limit for large exports)
-      - Resend email / retry Sheets sync actions
+      - Resend email actions
     """
 
     # -----------------------------------------------------------------------
@@ -86,7 +84,6 @@ class LeadAdmin(admin.ModelAdmin):
         "status",
         "form_location",
         "is_duplicate",
-        "sheets_synced",
     )
 
     list_filter = (
@@ -96,7 +93,6 @@ class LeadAdmin(admin.ModelAdmin):
         "form_location",
         "is_duplicate",
         "submitted_at",
-        "sheets_synced",
     )
 
     search_fields = ("full_name", "company", "email", "phone")
@@ -117,7 +113,6 @@ class LeadAdmin(admin.ModelAdmin):
         "referrer",
         "submitted_at",
         "is_duplicate",
-        "sheets_synced",
     )
 
     inlines = [RFQFileInline]
@@ -160,16 +155,6 @@ class LeadAdmin(admin.ModelAdmin):
                 "classes": ("collapse",),
             },
         ),
-        (
-            "Integration Flags",
-            {
-                "fields": (
-                    "is_duplicate",
-                    "sheets_synced",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
     )
 
     # -----------------------------------------------------------------------
@@ -180,7 +165,6 @@ class LeadAdmin(admin.ModelAdmin):
         "mark_as_contacted",
         "mark_as_spam",
         "export_as_csv",
-        "retry_sheets_sync",
     ]
 
     @admin.action(description="Mark selected leads as Reviewed")
@@ -259,42 +243,3 @@ class LeadAdmin(admin.ModelAdmin):
         response["Content-Disposition"] = 'attachment; filename="smec_leads_export.csv"'
         return response
 
-    @admin.action(description="Retry Google Sheets sync for selected leads")
-    def retry_sheets_sync(self, request, queryset):
-        """Re-push selected leads to Google Sheets."""
-        synced = 0
-        skipped = 0
-        failed = 0
-
-        for lead in queryset.select_related("campaign").prefetch_related("files"):
-            if not lead.campaign.sheets_id:
-                skipped += 1
-                continue
-
-            # Fix 7: Skip leads already synced — pushing again creates duplicate rows.
-            if lead.sheets_synced:
-                skipped += 1
-                continue
-
-            success = push_to_sheets(lead, lead.campaign.sheets_id)
-            if success:
-                lead.sheets_synced = True
-                lead.save(update_fields=["sheets_synced"])
-                synced += 1
-            else:
-                failed += 1
-
-        if synced:
-            self.message_user(request, f"Sheets sync successful for {synced} lead(s).")
-        if skipped:
-            self.message_user(
-                request,
-                f"{skipped} lead(s) skipped — no Google Sheet configured or already synced.",
-                level="warning",
-            )
-        if failed:
-            self.message_user(
-                request,
-                f"Sheets sync failed for {failed} lead(s). Check server logs.",
-                level="warning",
-            )
